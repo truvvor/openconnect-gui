@@ -153,6 +153,20 @@ jobs:
           cp oc/vpnc-script-win.js          "$STAGE_RT/"
           cp oc/openconnect.h               "$STAGE_DEV/include/"
           cp oc/.libs/libopenconnect.dll.a  "$STAGE_DEV/lib/"
+          # 1b) propagate transitive include trees so downstream projects
+          # (openconnect-gui src/) can #include <gnutls/*.h>, <libxml/*.h>, etc.
+          MINGW_INC=${{ matrix.mingw_prefix }}/include
+          for d in gnutls libxml2 libxml stoken nettle gmp p11-kit-1 p11-kit; do
+            if [ -d "$MINGW_INC/$d" ]; then
+              cp -r "$MINGW_INC/$d" "$STAGE_DEV/include/"
+            fi
+          done
+          # gmp.h, lzo*.h etc. — single-file headers at the include root
+          for h in gmp.h gmpxx.h zlib.h zconf.h lz4.h lzma.h libxml2/libxml/parser.h; do
+            if [ -f "$MINGW_INC/$h" ]; then
+              install -D "$MINGW_INC/$h" "$STAGE_DEV/include/$(basename "$h")"
+            fi
+          done
           MINGW_BIN=${{ matrix.mingw_prefix }}/bin
           MINGW_LIB=${{ matrix.mingw_prefix }}/lib
           # 2) explicit DLL dep list — openconnect/gnutls/libxml2 + transitives + MinGW runtime
