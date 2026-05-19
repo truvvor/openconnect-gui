@@ -185,8 +185,9 @@ jobs:
           cd "$RUNNER_TEMP"
           ART_RT=openconnect-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip
           ART_DEV=openconnect-devel-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip
-          (cd stage-runtime && zip -r "$RUNNER_TEMP/$ART_RT" .)
-          (cd stage-devel   && zip -r "$RUNNER_TEMP/$ART_DEV" .)
+          # bsdtar (libarchive) writes zip via -a
+          bsdtar -caf "$RUNNER_TEMP/$ART_RT"  -C stage-runtime .
+          bsdtar -caf "$RUNNER_TEMP/$ART_DEV" -C stage-devel   .
           # SHA512 sidecars
           sha512sum "$ART_RT"  | awk '{print $1"  "$2}' > "${ART_RT}.sha512"
           sha512sum "$ART_DEV" | awk '{print $1"  "$2}' > "${ART_DEV}.sha512"
