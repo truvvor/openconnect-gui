@@ -5,11 +5,16 @@ on:
     branches:
       - "**"
   workflow_dispatch:
+  workflow_run:
+    workflows: ["build-openconnect-patched"]
+    types: [completed]
 
 jobs:
   windows:
     name: Windows ${{ matrix.arch }}
     runs-on: windows-2022
+    # Run only if the openconnect build succeeded (or if directly pushed without it)
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +36,36 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download patched openconnect zips
+        uses: actions/download-artifact@v4
+        with:
+          name: openconnect-${{ matrix.arch }}
+          path: external/
+          # Pull the artifact from the most recent successful run of build-openconnect-patched
+          # on the same repository/branch
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Stage openconnect zips (workflow_run case)
+        shell: pwsh
+        run: |
+          if (!(Test-Path "external/openconnect-v9.12-camouflage_*.zip")) {
+            Write-Host "Artifact not staged via workflow_run, checking gh CLI..."
+            $latest = gh run list --workflow build-openconnect.yml --branch ${{ github.ref_name }} --limit 5 --json databaseId,conclusion | ConvertFrom-Json | Where-Object { $_.conclusion -eq 'success' } | Select-Object -First 1
+            if ($latest) {
+              Write-Host "Pulling artifacts from run $($latest.databaseId)"
+              New-Item -ItemType Directory -Force -Path external | Out-Null
+              gh run download $latest.databaseId -R ${{ github.repository }} -n openconnect-${{ matrix.arch }} -D external/
+            } else {
+              Write-Host "No prior successful build-openconnect run; cmake will fall back to upstream"
+            }
+          }
+          Write-Host "=== external/ contents ==="
+          Get-ChildItem external -Recurse | Select-Object Name, Length
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Qt + MinGW
         uses: jurplel/install-qt-action@v4
@@ -94,7 +129,7 @@ jobs:
           cmake .. -G "MinGW Makefiles" ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_MAKE_PROGRAM=mingw32-make.exe ^
-            -Dopenconnect-TAG=v8.02
+            -Dopenconnect-TAG=9.12
 
       - name: Build deps + app
         shell: cmd
