@@ -109,6 +109,73 @@ Libs: -L\${libdir} -lp11-kit
 Cflags: -I\${includedir}/p11-kit-1
 EOF
 
+# ---- 3.5. Cross-platform fixups (in-place patches we don't ship as quilt) -
+# (a) gnutls.c #include <netinet/tcp.h> -> wrap with #ifdef _WIN32.
+#     This belongs to 200-xray-scatter.patch but is easier to keep here for
+#     idempotency; the patch file in patches/ also has the cross-platform form.
+if grep -q '^#include <netinet/tcp.h>$' "$OC_SRC_DIR/gnutls.c"; then
+    log "guarding netinet/tcp.h include for mingw ..."
+    python3 - "$OC_SRC_DIR/gnutls.c" <<'PYEOF'
+import sys
+p = sys.argv[1]
+src = open(p).read().replace(
+    '#include <netinet/tcp.h>',
+    '#ifdef _WIN32\n# include <winsock2.h>\n# include <ws2tcpip.h>\n#else\n# include <netinet/tcp.h>\n#endif',
+    1)
+open(p,'w').write(src)
+PYEOF
+fi
+
+# (b) 400-public-camouflage-api: openconnect_set_camouflage_secret as a public
+#     symbol. We add the declaration to openconnect.h, the definition to
+#     library.c, and export it via libopenconnect.map.in.
+log "applying 400-public-camouflage-api in-place (idempotent) ..."
+SRC="$OC_SRC_DIR" python3 - <<'PYEOF'
+import os
+SRC = os.environ['SRC']
+
+hpath = os.path.join(SRC, "openconnect.h")
+h = open(hpath).read()
+if "openconnect_set_camouflage_secret" not in h:
+    needle = "#ifdef __cplusplus\n}\n#endif\n\n#endif /* __OPENCONNECT_H__ */"
+    add = (
+        "/* Keenetic anti-DPI camouflage public setter (400-patch).\n"
+        " * When `secret` is non-NULL non-empty, the camouflage envelope is\n"
+        " * enabled inside libopenconnect: HMAC-SHA256 CSTP magic, X-S-/X-D-\n"
+        " * header renaming, cookie session=, /api/v1/session, XML auth-request,\n"
+        " * suppressed X-Transcend-Version, TCP-scatter on TLS ClientHello.\n"
+        " * Passing NULL or empty string disables it.  String is duplicated. */\n"
+        "void openconnect_set_camouflage_secret(struct openconnect_info *vpninfo,\n"
+        "                                       const char *secret);\n\n"
+    )
+    h = h.replace(needle, add + needle, 1)
+    open(hpath,"w").write(h)
+
+cpath = os.path.join(SRC, "library.c")
+c = open(cpath).read()
+if "openconnect_set_camouflage_secret" not in c:
+    impl = (
+        "\n/* Keenetic anti-DPI camouflage public setter (400-patch). */\n"
+        "void openconnect_set_camouflage_secret(struct openconnect_info *vpninfo,\n"
+        "                                       const char *secret)\n"
+        "{\n"
+        "\tfree(vpninfo->camouflage_secret);\n"
+        "\tvpninfo->camouflage_secret = (secret && *secret) ? strdup(secret) : NULL;\n"
+        "}\n"
+    )
+    c = c.rstrip() + "\n" + impl
+    open(cpath,"w").write(c)
+
+mpath = os.path.join(SRC, "libopenconnect.map.in")
+m = open(mpath).read()
+if "openconnect_set_camouflage_secret" not in m:
+    insert = "\nOPENCONNECT_5_10 {\n global:\n\topenconnect_set_camouflage_secret;\n} OPENCONNECT_5_9;\n"
+    idx = m.find("OPENCONNECT_PRIVATE {")
+    assert idx > 0
+    m = m[:idx] + insert + "\n" + m[idx:]
+    open(mpath,"w").write(m)
+PYEOF
+
 # ---- 4. configure + build -------------------------------------------------
 (
     cd "$OC_SRC_DIR"
@@ -144,24 +211,21 @@ EOF
         --with-vpnc-script="C:\\Program Files\\Keenetic VPN\\vpnc-script-win.js" \
         2>&1 | tail -40
 
-    log "make -j$JOBS ..."
-    make -j"$JOBS" 2>&1 | tail -25
-
-    log "make install (staged) ..."
-    rm -rf _install
-    make install DESTDIR="$OC_SRC_DIR/_install" 2>&1 | tail -10
+    log "make -j$JOBS libopenconnect.la ..."
+    # Build only the library — the CLI (openconnect.exe) references POSIX
+    # syslog from 300-keenetic-passwd.patch and won't build on mingw. The
+    # GUI links against the .dll directly, so we don't need the .exe.
+    make -j"$JOBS" libopenconnect.la 2>&1 | tail -25
 )
 
 # ---- 5. stage final zip layout --------------------------------------------
 STAGE="$OC_SRC_DIR/_stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/bin" "$STAGE/lib" "$STAGE/include"
-INST="$OC_SRC_DIR/_install/keenetic-install"
-cp -p "$INST/bin/"*.dll             "$STAGE/bin/"     2>/dev/null || true
-cp -p "$INST/bin/openconnect.exe"   "$STAGE/bin/"     2>/dev/null || true
-cp -p "$INST/lib/"*.a               "$STAGE/lib/"     2>/dev/null || true
-cp -p "$INST/include/openconnect.h" "$STAGE/include/" 2>/dev/null || true
-cp -p "$OC_DEPS_DIR/bin/"*.dll      "$STAGE/bin/"     2>/dev/null || true
+cp -p "$OC_SRC_DIR/.libs/libopenconnect-5.dll"  "$STAGE/bin/"
+cp -p "$OC_SRC_DIR/.libs/libopenconnect.dll.a"  "$STAGE/lib/"
+cp -p "$OC_SRC_DIR/openconnect.h"               "$STAGE/include/"
+cp -p "$OC_DEPS_DIR/bin/"*.dll                  "$STAGE/bin/"     2>/dev/null || true
 
 "${HOST}-strip" "$STAGE/bin/"*.dll "$STAGE/bin/"*.exe 2>/dev/null || true
 

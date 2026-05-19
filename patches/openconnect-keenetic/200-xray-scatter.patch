@@ -1,15 +1,20 @@
 --- a/gnutls.c	2026-04-10 22:45:24.988867340 +0000
 +++ b/gnutls.c	2026-04-10 22:45:25.012867023 +0000
-@@ -18,6 +18,8 @@
+@@ -18,6 +18,13 @@
  #include <config.h>
  
  #include "openconnect-internal.h"
-+#include <netinet/tcp.h>
++#ifdef _WIN32
++# include <winsock2.h>
++# include <ws2tcpip.h>
++#else
++# include <netinet/tcp.h>
++#endif
 +#include <gnutls/crypto.h>
  
  #include "gnutls.h"
  
-@@ -2325,6 +2327,60 @@
+@@ -2325,6 +2332,60 @@
  }
  #endif
  
@@ -38,7 +43,7 @@
 +		int nodelay = 1;
 +		uint8_t rnd[2];
 +
-+		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
++		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&nodelay, sizeof(nodelay));
 +
 +		/* First write contains ClientHello -- send a tiny leading
 +		 * fragment (1-3 bytes) so the first TCP segment is too small
@@ -48,7 +53,7 @@
 +			gnutls_rnd(GNUTLS_RND_NONCE, rnd, sizeof(rnd));
 +			size_t first = 1 + (rnd[0] % 3);   /* 1, 2, or 3 bytes */
 +			if (first > remaining) first = remaining;
-+			ssize_t sent = send(fd, p, first, 0);
++			ssize_t sent = send(fd, (const char *)p, first, 0);
 +			if (sent < 0) return sent;
 +			p += sent; total += sent; remaining -= sent;
 +		}
@@ -58,19 +63,19 @@
 +			gnutls_rnd(GNUTLS_RND_NONCE, rnd, sizeof(rnd));
 +			size_t chunk = 64 + (((rnd[0] << 8) | rnd[1]) % 193);
 +			if (chunk > remaining) chunk = remaining;
-+			ssize_t sent = send(fd, p, chunk, 0);
++			ssize_t sent = send(fd, (const char *)p, chunk, 0);
 +			if (sent < 0) return sent;
 +			p += sent; total += sent; remaining -= sent;
 +		}
 +		return (ssize_t)total;
 +	}
-+	return send(fd, data, len, 0);
++	return send(fd, (const char *)data, len, 0);
 +}
 +
  int openconnect_open_https(struct openconnect_info *vpninfo)
  {
  	int ssl_sock = -1;
-@@ -2537,6 +2593,15 @@
+@@ -2537,6 +2598,15 @@
  	gnutls_credentials_set(vpninfo->https_sess, GNUTLS_CRD_CERTIFICATE, vpninfo->https_cred);
  	gnutls_transport_set_ptr(vpninfo->https_sess,(gnutls_transport_ptr_t)(intptr_t)ssl_sock);
  

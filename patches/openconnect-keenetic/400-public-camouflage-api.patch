@@ -1,0 +1,43 @@
+--- a/openconnect.h
++++ b/openconnect.h
+@@ -726,6 +726,16 @@
+  * - returns a positive number if the file is a TUN device or socket. */
+ int openconnect_check_peer_cert_hash(struct openconnect_info *vpninfo, const char *old_hash);
+ 
++/* Keenetic anti-DPI camouflage.
++ *
++ * When `secret` is a non-NULL non-empty string, the patched libopenconnect
++ * enables camouflage Level 2: HMAC-SHA256-derived CSTP magic bytes,
++ * X-S-* / X-D-* header renaming, cookie session= (vs webvpn=), XML
++ * `auth-request` root (vs config-auth), CONNECT /api/v1/session
++ * (vs /CSCOSSLC/tunnel), suppressed X-Transcend-Version, and TCP-scatter
++ * fragmentation of the TLS ClientHello.  `secret` is duplicated and freed
++ * automatically.  Passing NULL or "" disables the envelope. */
++void openconnect_set_camouflage_secret(struct openconnect_info *vpninfo, const char *secret);
+ #ifdef __cplusplus
+ }
+ #endif
+--- a/library.c
++++ b/library.c
+@@ -1822,3 +1822,12 @@
+ 	return -EOPNOTSUPP;
+ #endif
+ }
++
++/* Keenetic anti-DPI camouflage public setter. */
++void openconnect_set_camouflage_secret(struct openconnect_info *vpninfo, const char *secret)
++{
++	free(vpninfo->camouflage_secret);
++	vpninfo->camouflage_secret = (secret && *secret) ? strdup(secret) : NULL;
++}
+--- a/libopenconnect.map.in
++++ b/libopenconnect.map.in
+@@ -129,3 +129,8 @@
+ global:
+ 	openconnect_check_peer_cert_hash;
+ } @SYMVER_2@;
++
++@SYMVER_KEENETIC@ {
++global:
++	openconnect_set_camouflage_secret;
++} @SYMVER_3@;
