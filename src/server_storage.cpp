@@ -31,6 +31,7 @@ StoredServer::StoredServer()
     , m_minimize_on_connect{ false }
     , m_proxy{ false }
     , m_disable_udp{ false }
+    , m_auto_accept_banner{ true }
     , m_reconnect_timeout{ 300 }
     , m_dtls_attempt_period{ 25 }
     , m_protocol_id(0)
@@ -161,6 +162,9 @@ int StoredServer::load(QString& name)
     this->m_batch_mode = settings.value("batch", false).toBool();
     this->m_proxy = settings.value("proxy", false).toBool();
     this->m_disable_udp = settings.value("disable-udp", false).toBool();
+    /* default ON: most users don't want to click through "Welcome to KN-..."
+     * banners every connect. They can turn it off in the profile editor. */
+    this->m_auto_accept_banner = settings.value("auto-accept-banner", true).toBool();
     this->m_minimize_on_connect = settings.value("minimize-on-connect", false).toBool();
     this->m_reconnect_timeout = settings.value("reconnect-timeout", 300).toInt();
     this->m_dtls_attempt_period = settings.value("dtls_attempt_period", 25).toInt();
@@ -250,6 +254,7 @@ int StoredServer::save()
     settings.setValue("batch", this->m_batch_mode);
     settings.setValue("proxy", this->m_proxy);
     settings.setValue("disable-udp", this->m_disable_udp);
+    settings.setValue("auto-accept-banner", this->m_auto_accept_banner);
     settings.setValue("minimize-on-connect", this->m_minimize_on_connect);
     settings.setValue("reconnect-timeout", this->m_reconnect_timeout);
     settings.setValue("dtls_attempt_period", this->m_dtls_attempt_period);
@@ -307,6 +312,16 @@ void StoredServer::set_camouflage_secret(const QString& secret)
 void StoredServer::clear_camouflage_secret()
 {
     this->m_camouflage_secret.clear();
+}
+
+bool StoredServer::get_auto_accept_banner() const
+{
+    return this->m_auto_accept_banner;
+}
+
+void StoredServer::set_auto_accept_banner(bool v)
+{
+    this->m_auto_accept_banner = v;
 }
 
 const QString& StoredServer::get_username() const

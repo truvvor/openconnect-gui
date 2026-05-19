@@ -53,6 +53,11 @@ public:
     void set_camouflage_secret(const QString& secret);
     void clear_camouflage_secret();
 
+    /* When true, the server "Welcome to KN-...." / login-banner is logged
+     * and silently accepted instead of popping a modal Accept/Disconnect box. */
+    bool get_auto_accept_banner() const;
+    void set_auto_accept_banner(bool v);
+
     QString get_cert_file();
     QString get_key_file();
     QString get_key_url() const;
@@ -115,6 +120,7 @@ private:
     bool m_minimize_on_connect;
     bool m_proxy;
     bool m_disable_udp;
+    bool m_auto_accept_banner;
     int m_reconnect_timeout;
     int m_dtls_attempt_period;
     QString m_username;

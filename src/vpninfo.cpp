@@ -649,15 +649,25 @@ void VpnInfo::logVpncScriptOutput()
             Logger::instance().addMessage(QLatin1String("Could not remove ") + tfile + ": " + QString::number((int)file.error()));
         }
 
-        if (ss->get_batch_mode() != true && bannerMessage.isEmpty() == false) {
-            // TODO: msgbox title; e.g. Accept/Continue + Disconnect on buttons
-            MyMsgBox msgBox(this->m,
-                bannerMessage,
-                QString(""),
-                QString("Accept"));
-            msgBox.show();
-            if (msgBox.result() == false) {
-                this->m->on_disconnectClicked();
+        if (bannerMessage.isEmpty() == false) {
+            if (ss->get_auto_accept_banner() == true) {
+                /* Silently log the banner and continue — no modal dialog.
+                 * This is the path that bypasses the "Welcome to KN-…" /
+                 * "Welcome to NC-…" Accept-button on every reconnect. */
+                Logger::instance().addMessage(QLatin1String("Banner auto-accepted:"));
+                for (const QString& bl : bannerMessage.split('\n', Qt::SkipEmptyParts)) {
+                    Logger::instance().addMessage(QLatin1String("  ") + bl);
+                }
+            } else if (ss->get_batch_mode() != true) {
+                // Legacy interactive path: show Accept / Disconnect modal.
+                MyMsgBox msgBox(this->m,
+                    bannerMessage,
+                    QString(""),
+                    QString("Accept"));
+                msgBox.show();
+                if (msgBox.result() == false) {
+                    this->m->on_disconnectClicked();
+                }
             }
         }
     } else {

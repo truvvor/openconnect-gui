@@ -601,6 +601,19 @@ When the secret is set: the tunnel URL changes to /api/v1/session, the X-CSTP-/X
         </property>
        </widget>
       </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QCheckBox" name="autoAcceptBannerBox">
+        <property name="text">
+         <string>Auto-accept server login banner (skip the "Welcome to KN-…" Accept dialog)</string>
+        </property>
+        <property name="toolTip">
+         <string>When the gateway sends a Cisco-style login banner (CISCO_BANNER), accept it silently and log to the connection log instead of popping a modal "Accept / Disconnect" message box. Default: on.</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -641,6 +654,7 @@ When the secret is set: the tunnel URL changes to /api/v1/session, the X-CSTP-/X
   <tabstop>useProxyBox</tabstop>
   <tabstop>camouflageSecretEdit</tabstop>
   <tabstop>camouflageForceTcpBox</tabstop>
+  <tabstop>autoAcceptBannerBox</tabstop>
   <tabstop>loadWinCertList</tabstop>
   <tabstop>loadWinCert</tabstop>
  </tabstops>

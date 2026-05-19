@@ -153,6 +153,7 @@ EditDialog::EditDialog(QString server, QWidget* parent)
     // Force-TCP toggle starts checked iff secret is non-empty (sensible default for
     // anyone configuring camouflage; user can still uncheck).
     ui->camouflageForceTcpBox->setChecked(!ss->get_camouflage_secret().isEmpty());
+    ui->autoAcceptBannerBox->setChecked(ss->get_auto_accept_banner());
 
     // Load the windows certificates
     load_win_certs();
@@ -255,6 +256,7 @@ void EditDialog::on_buttonBox_accepted()
         disable_udp = true;
     }
     ss->set_disable_udp(disable_udp);
+    ss->set_auto_accept_banner(ui->autoAcceptBannerBox->isChecked());
     ss->set_reconnect_timeout(ui->reconnectTimeoutSpinBox->value());
     ss->set_dtls_reconnect_timeout(ui->dtlsAttemptPeriodSpinBox->value());
 
