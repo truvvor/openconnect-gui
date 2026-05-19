@@ -1,0 +1,27 @@
+# Anti-DPI Level 2 — OpenConnect client override
+# Fetched by Keenetic firmware from http://storage.gk.company:8880/
+# Edit here to update ALL routers on next service restart
+
+# === Camouflage secret ===
+# MUST match server's camouflage-secret exactly.
+# This single option activates ALL Level 2 client changes:
+#   - CSTP magic bytes (HMAC-SHA256 derived)
+#   - Header renaming: X-CSTP-* -> X-S-*, X-DTLS-* -> X-D-*
+#   - Cookie renaming: webvpn -> session, webvpncontext -> sid
+#   - XML root: config-auth -> auth-response
+#   - Tunnel URL: /CSCOSSLC/tunnel -> /api/v1/session
+#   - X-Transcend-Version suppressed
+#   - Xray-compatible TCP scatter (TLS handshake fragmentation)
+camouflage-secret = "FCuA1B86sXsITTC2Yb5YHnfutaiijfWC"
+
+# === Force TLS-only ===
+# DTLS uses UDP — trivially fingerprinted by DPI as VPN traffic.
+# TCP-only makes connection indistinguishable from regular HTTPS.
+no-dtls
+
+# === B50: trust by full PKI chain instead of pinning ===
+# Server may rotate Let's Encrypt cert (90-day) — don't pin SPKI.
+# Our firmware bundle has all public roots + LE intermediates R10-R14 / E5-E9
+# (B40/B42, 156 certs total). gnutls reconstructs chain from this bundle even
+# when nginx on server serves only leaf for camouflage-SNI like 4d36.<host>.
+cafile = /etc/ssl/certs/ca-certificates.crt

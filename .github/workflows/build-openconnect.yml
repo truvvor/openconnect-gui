@@ -1,0 +1,193 @@
+name: build-openconnect-patched
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+env:
+  OPENCONNECT_VERSION: "9.12"
+  OPENCONNECT_URL: "https://www.infradead.org/openconnect/download/openconnect-9.12.tar.gz"
+  VPNC_SCRIPT_WIN_URL: "https://gitlab.com/openconnect/vpnc-scripts/-/raw/master/vpnc-script-win.js"
+
+jobs:
+  build:
+    name: openconnect ${{ matrix.arch }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            msystem: MINGW32
+            host_triple: i686-w64-mingw32
+            mingw_prefix: /mingw32
+            pacman_prefix: mingw-w64-i686
+            mingw_label: MINGW32
+          - arch: x64
+            msystem: MINGW64
+            host_triple: x86_64-w64-mingw32
+            mingw_prefix: /mingw64
+            pacman_prefix: mingw-w64-x86_64
+            mingw_label: MINGW64
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 (${{ matrix.msystem }})
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            base-devel
+            git
+            tar
+            wget
+            patch
+            autoconf
+            automake
+            libtool
+            pkgconf
+            make
+            python
+            ${{ matrix.pacman_prefix }}-toolchain
+            ${{ matrix.pacman_prefix }}-gnutls
+            ${{ matrix.pacman_prefix }}-libxml2
+            ${{ matrix.pacman_prefix }}-nettle
+            ${{ matrix.pacman_prefix }}-gmp
+            ${{ matrix.pacman_prefix }}-p11-kit
+            ${{ matrix.pacman_prefix }}-stoken
+            ${{ matrix.pacman_prefix }}-zlib
+            ${{ matrix.pacman_prefix }}-lz4
+            ${{ matrix.pacman_prefix }}-libiconv
+            ${{ matrix.pacman_prefix }}-gettext
+            ${{ matrix.pacman_prefix }}-libidn2
+
+      - name: Versions
+        run: |
+          echo "=== gcc ==="
+          ${{ matrix.host_triple }}-gcc --version
+          echo "=== gnutls ==="
+          pkg-config --modversion gnutls
+          echo "=== libxml-2.0 ==="
+          pkg-config --modversion libxml-2.0
+          echo "=== mingw prefix ==="
+          ls ${{ matrix.mingw_prefix }}/bin/libgnutls*.dll || true
+
+      - name: Download openconnect ${{ env.OPENCONNECT_VERSION }}
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP"
+          wget -q "${OPENCONNECT_URL}" -O openconnect.tar.gz
+          tar xf openconnect.tar.gz
+          mv openconnect-${OPENCONNECT_VERSION} oc
+          ls oc | head
+
+      - name: Apply patches
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP/oc"
+          REPO="${{ github.workspace }}"
+          for p in "$REPO/patches/openconnect/"*.patch; do
+            echo "=== $(basename "$p") ==="
+            patch -p1 < "$p"
+          done
+
+      - name: Download vpnc-script-win.js
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP/oc"
+          wget -q "${VPNC_SCRIPT_WIN_URL}" -O vpnc-script-win.js
+          ls -la vpnc-script-win.js
+
+      - name: Configure
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP/oc"
+          ./autogen.sh
+          ./configure \
+            --host=${{ matrix.host_triple }} \
+            --prefix=${{ matrix.mingw_prefix }} \
+            --disable-nls \
+            --without-openssl \
+            --with-gnutls \
+            --enable-shared --disable-static \
+            --with-default-vpncscript=vpnc-script-win.js \
+            CFLAGS="-O2 -pipe"
+
+      - name: Build
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP/oc"
+          make -j2
+
+      - name: Stage runtime
+        id: stage
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP"
+          STAGE_RT=$RUNNER_TEMP/stage-runtime
+          STAGE_DEV=$RUNNER_TEMP/stage-devel
+          mkdir -p "$STAGE_RT" "$STAGE_DEV/include" "$STAGE_DEV/lib"
+          # 1) main artifacts
+          cp oc/.libs/libopenconnect-5.dll "$STAGE_RT/"
+          cp oc/.libs/openconnect.exe       "$STAGE_RT/"
+          cp oc/vpnc-script-win.js          "$STAGE_RT/"
+          cp oc/openconnect.h               "$STAGE_DEV/include/"
+          cp oc/.libs/libopenconnect.dll.a  "$STAGE_DEV/lib/"
+          # 2) walk DLL deps via objdump and copy from MINGW bin
+          MINGW_BIN=${{ matrix.mingw_prefix }}/bin
+          declare -A SEEN
+          queue=("$STAGE_RT/openconnect.exe" "$STAGE_RT/libopenconnect-5.dll")
+          while [ ${#queue[@]} -gt 0 ]; do
+            f="${queue[0]}"; queue=("${queue[@]:1}")
+            for dep in $(${{ matrix.host_triple }}-objdump -p "$f" 2>/dev/null | awk '/DLL Name:/ {print $3}'); do
+              # only copy DLLs that live in MINGW_BIN
+              if [ -f "$MINGW_BIN/$dep" ] && [ -z "${SEEN[$dep]:-}" ]; then
+                SEEN[$dep]=1
+                cp "$MINGW_BIN/$dep" "$STAGE_RT/"
+                queue+=("$STAGE_RT/$dep")
+              fi
+            done
+          done
+          # 3) provide common import-libs in devel zip for downstream linking
+          for libname in libgnutls libgmp libhogweed libnettle libp11-kit libstoken libxml2; do
+            for f in ${{ matrix.mingw_prefix }}/lib/${libname}.dll.a; do
+              [ -f "$f" ] && cp "$f" "$STAGE_DEV/lib/"
+            done
+          done
+          echo "=== runtime zip contents ==="
+          ls -la "$STAGE_RT"
+          echo "=== devel zip contents ==="
+          find "$STAGE_DEV" -type f
+
+      - name: Package zips
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP"
+          ART_RT=openconnect-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip
+          ART_DEV=openconnect-devel-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip
+          (cd stage-runtime && zip -r "$RUNNER_TEMP/$ART_RT" .)
+          (cd stage-devel   && zip -r "$RUNNER_TEMP/$ART_DEV" .)
+          # SHA512 sidecars
+          sha512sum "$ART_RT"  | awk '{print $1"  "$2}' > "${ART_RT}.sha512"
+          sha512sum "$ART_DEV" | awk '{print $1"  "$2}' > "${ART_DEV}.sha512"
+          ls -la *.zip *.sha512
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openconnect-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/openconnect-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip
+            ${{ runner.temp }}/openconnect-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip.sha512
+            ${{ runner.temp }}/openconnect-devel-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip
+            ${{ runner.temp }}/openconnect-devel-v${{ env.OPENCONNECT_VERSION }}-camouflage_${{ matrix.mingw_label }}.zip.sha512
+          if-no-files-found: error
