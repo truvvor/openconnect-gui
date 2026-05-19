@@ -124,6 +124,10 @@ jobs:
       - name: Configure
         shell: cmd
         run: |
+          rem strip Git mingw bin from PATH — its 64-bit objdump confuses fixup_bundle on x86
+          set "PATH=%PATH:C:\Program Files\Git\mingw64\bin;=%"
+          set "PATH=%PATH:C:\Program Files\Git\usr\bin;=%"
+          set "PATH=%PATH:C:\Program Files\Git\cmd;=%"
           mkdir build
           cd build
           cmake .. -G "MinGW Makefiles" ^
@@ -135,12 +139,18 @@ jobs:
         shell: cmd
         working-directory: build
         run: |
+          set "PATH=%PATH:C:\Program Files\Git\mingw64\bin;=%"
+          set "PATH=%PATH:C:\Program Files\Git\usr\bin;=%"
+          set "PATH=%PATH:C:\Program Files\Git\cmd;=%"
           mingw32-make -j2
 
       - name: Package (NSIS)
         shell: cmd
         working-directory: build
         run: |
+          set "PATH=%PATH:C:\Program Files\Git\mingw64\bin;=%"
+          set "PATH=%PATH:C:\Program Files\Git\usr\bin;=%"
+          set "PATH=%PATH:C:\Program Files\Git\cmd;=%"
           mingw32-make package
           dir *.exe
 
