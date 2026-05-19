@@ -1,7 +1,7 @@
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(MINGW_VARIANT mingw64)
+    set(MINGW_VARIANT MINGW64)
 else()
-    set(MINGW_VARIANT mingw32)
+    set(MINGW_VARIANT MINGW32)
 endif()
 
 # --------------------------------------------------------------------------------------------------

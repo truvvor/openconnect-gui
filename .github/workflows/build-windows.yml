@@ -1,0 +1,148 @@
+name: build-windows
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            qt_arch: win32_mingw81
+            qt_tools: tools_mingw,qt.tools.win32_mingw810
+            mingw_dir_base: mingw810_32
+          - arch: x64
+            qt_arch: win64_mingw81
+            qt_tools: tools_mingw81,qt.tools.win64_mingw810
+            mingw_dir_base: mingw810_64
+
+    env:
+      QT_VERSION: 5.15.2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Qt + MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: ${{ matrix.qt_arch }}
+          tools: ${{ matrix.qt_tools }}
+          modules: ""
+          cache: true
+
+      - name: Locate MinGW
+        id: mingw
+        shell: pwsh
+        run: |
+          $base = "${{ runner.workspace }}\Qt\Tools"
+          if (-not (Test-Path $base)) { $base = "${env:RUNNER_WORKSPACE}\Qt\Tools" }
+          if (-not (Test-Path $base)) { $base = "${{ github.workspace }}\..\Qt\Tools" }
+          Write-Host "Searching MinGW in $base ..."
+          $cands = Get-ChildItem -Path $base -Directory -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -like "mingw810_*" -or $_.Name -like "mingw81_*" -or $_.Name -like "mingw_*" }
+          if (-not $cands) {
+            Get-ChildItem -Path $base -Directory | ForEach-Object { Write-Host $_.FullName }
+            throw "MinGW not found in $base"
+          }
+          # pick by arch
+          $want = "${{ matrix.mingw_dir_base }}"
+          $picked = $cands | Where-Object { $_.Name -eq $want } | Select-Object -First 1
+          if (-not $picked) { $picked = $cands | Select-Object -First 1 }
+          $mingw = $picked.FullName
+          Write-Host "Using MinGW: $mingw"
+          "mingw_root=$mingw" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "$mingw\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Versions
+        shell: pwsh
+        run: |
+          Write-Host "=== g++ ==="
+          g++ --version
+          Write-Host "=== mingw32-make ==="
+          mingw32-make --version
+          Write-Host "=== cmake ==="
+          cmake --version
+          Write-Host "=== qmake ==="
+          qmake --version
+          Write-Host "=== makensis ==="
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /VERSION
+
+      - name: Configure
+        shell: cmd
+        run: |
+          mkdir build
+          cd build
+          cmake .. -G "MinGW Makefiles" ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_MAKE_PROGRAM=mingw32-make.exe ^
+            -Dopenconnect-TAG=v8.02
+
+      - name: Build deps + app
+        shell: cmd
+        working-directory: build
+        run: |
+          mingw32-make -j2
+
+      - name: Package (NSIS)
+        shell: cmd
+        working-directory: build
+        run: |
+          mingw32-make package
+          dir *.exe
+
+      - name: Compute SHA512
+        shell: pwsh
+        working-directory: build
+        run: |
+          Get-ChildItem -Filter "openconnect-gui-*.exe" | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA512).Hash.ToLower()
+            "$h  $($_.Name)" | Set-Content -Path ("$($_.FullName).sha512") -Encoding ASCII
+            Write-Host "$($_.Name) -> $h"
+          }
+
+      - name: Rename installer with arch suffix
+        shell: pwsh
+        working-directory: build
+        run: |
+          Get-ChildItem -Filter "openconnect-gui-*.exe" | ForEach-Object {
+            $newName = $_.Name -replace '\.exe$', "-${{ matrix.arch }}.exe"
+            if ($_.Name -notlike "*-${{ matrix.arch }}.exe") {
+              Rename-Item $_.FullName -NewName $newName
+            }
+          }
+          Get-ChildItem -Filter "openconnect-gui-*.exe.sha512" | ForEach-Object {
+            $newName = $_.Name -replace '\.exe\.sha512$', "-${{ matrix.arch }}.exe.sha512"
+            if ($_.Name -notlike "*-${{ matrix.arch }}.exe.sha512") {
+              Rename-Item $_.FullName -NewName $newName
+            }
+          }
+          Get-ChildItem build -Filter "openconnect-gui-*" -ErrorAction SilentlyContinue
+          Get-ChildItem -Filter "openconnect-gui-*"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: openconnect-gui-${{ matrix.arch }}
+          path: |
+            build/openconnect-gui-*.exe
+            build/openconnect-gui-*.exe.sha512
+          if-no-files-found: error
