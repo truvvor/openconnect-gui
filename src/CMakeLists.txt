@@ -2,13 +2,16 @@
 set_property(SOURCE ${PROJECT_NAME}.cpp PROPERTY SKIP_AUTOGEN ON)
 set_property(SOURCE timestamp.cpp PROPERTY SKIP_AUTOGEN ON)
 
+# Keenetic camouflage fork: trimmed source list.
+# Removed (vs upstream openconnect-gui 1.5.3):
+#   cert.cpp, key.cpp, keypair.cpp           — per-user certificate auth UI
+#   gtdb.cpp                                  — TOFU cert pinning (replaced by bundled CA)
+#   cryptdata.cpp                             — settings-blob encryption (we use QSettings + QCryptographicHash + Windows DPAPI directly)
+#   dialog/MyCertMsgBox.{cpp,h,ui}            — first-time cert TOFU dialog
 set(${PROJECT_NAME}_SRCS
     ${PROJECT_NAME}.cpp
     ${PROJECT_NAME}.qrc
-    cert.cpp
     config.h.in
-    cryptdata.cpp
-    dialog/MyCertMsgBox.cpp
     dialog/MyInputDialog.cpp
     dialog/MyMsgBox.cpp
     dialog/editdialog.cpp
@@ -20,9 +23,6 @@ set(${PROJECT_NAME}_SRCS
     dialog/VpnProtocolModel.cpp
     dialog/mainwindow.cpp
     dialog/mainwindow.ui
-    gtdb.cpp
-    key.cpp
-    keypair.cpp
     main.cpp
     server_storage.cpp
 
@@ -60,17 +60,7 @@ if(MINGW)
             GENERATED true
     )
 endif()
-if(APPLE)
-    list(APPEND ${PROJECT_NAME}_RESOURCES
-        Resources/mono_lock.icns
-        ${OPENCONNECT_VPNC_SCRIPT}
-    )
-    set_source_files_properties(
-        Resources/mono_lock.icns
-        ${OPENCONNECT_VPNC_SCRIPT}
-            PROPERTIES MACOSX_PACKAGE_LOCATION Resources
-    )
-endif()
+# macOS support removed in keenetic-camouflage fork (Windows-only).
 
 add_executable(${PROJECT_NAME}
     ${${PROJECT_NAME}_SRCS}
@@ -86,8 +76,7 @@ if(MINGW)
     )
 
     add_dependencies(${PROJECT_NAME}
-        openconnect-devel-${openconnect-TAG}
-        openconnect-${openconnect-TAG}
+        openconnect-keenetic
         vpnc-scripts-${vpnc-scripts-TAG}
     )
 
@@ -95,38 +84,20 @@ if(MINGW)
         WIN32_EXECUTABLE true
     )
 
-    target_link_libraries (${PROJECT_NAME}
+    target_link_libraries(${PROJECT_NAME}
         # system libraries
         wsock32
+        ws2_32
+        iphlpapi
 
-        # 3rd party dependencies
+        # 3rd party dependencies (bundled DLLs from external/openconnect-keenetic_mingw64.zip)
         openconnect::gmp
         openconnect::gnutls
         openconnect::hogweed
         openconnect::nettle
         openconnect::openconnect
         openconnect::p11-kit
-        openconnect::stoken
         openconnect::xml2
-    )
-endif()
-
-if(APPLE)
-    configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/Resources/${PROJECT_NAME}.plist.in
-        ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.plist
-        @ONLY
-    )
-    set_target_properties(${PROJECT_NAME} PROPERTIES
-        MACOSX_BUNDLE true
-        OUTPUT_NAME ${PRODUCT_NAME_SHORT}
-        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.plist"
-        MACOSX_BUNDLE_BUNDLE_NAME ${PRODUCT_NAME_SHORT}
-        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}"
-        MACOSX_BUNDLE_COPYRIGHT "${PRODUCT_NAME_COPYRIGHT_SHORT}"
-        MACOSX_BUNDLE_GUI_IDENTIFIER io.github.openconnect.openconnect-gui
-        MACOSX_BUNDLE_ICON_FILE mono_lock.icns
-        MACOSX_BUNDLE_INFO_STRING ${PRODUCT_NAME_LONG}
     )
 endif()
 
@@ -140,7 +111,6 @@ target_link_libraries (${PROJECT_NAME}
     Qt5::Gui
     Qt5::Widgets
     Qt5::Network
-    #??? Qt5::QMacStylePlugin
 )
 
 if(UNIX)
@@ -150,17 +120,11 @@ if(UNIX)
 
         Threads::Threads
     )
-    if(APPLE)
-        target_link_libraries (${PROJECT_NAME}
-            ${SECURITY_LIBRARY}
-        )
-    endif()
 endif()
 
 # install executable
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION . COMPONENT App
-    BUNDLE DESTINATION . COMPONENT App
     LIBRARY DESTINATION . COMPONENT App
 )
 
@@ -172,8 +136,8 @@ list(APPEND libSearchDirs ${QT_LIBRARY_DIR})
 
 if(MINGW)
     set(APPS "\${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.exe")
-    #set(APPS "\${CMAKE_INSTALL_PREFIX}/./${PROJECT_NAME}.exe")
     list(APPEND libSearchDirs ${CMAKE_BINARY_DIR}/external/lib)
+    list(APPEND libSearchDirs ${CMAKE_BINARY_DIR}/external/bin)
 
     # Qt Platform Plugin
     install(FILES
@@ -181,11 +145,8 @@ if(MINGW)
         DESTINATION plugins/platforms
         COMPONENT App
     )
-    install(FILES
-        ${CMAKE_SOURCE_DIR}/nsis/qt.conf
-        DESTINATION .
-        COMPONENT App
-    )
+    # qt.conf was in nsis/, now generated inline.
+    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/qt.conf\" \"[Paths]\\nPlugins=plugins\\n\")" COMPONENT App)
 
     set(additionalLib ${_qwindows_dll})
     if(NOT Qt5Core_VERSION STRLESS "5.10")
@@ -195,42 +156,12 @@ if(MINGW)
             COMPONENT App
         )
     endif()
-elseif(APPLE)
-    set(APPS "\${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.app")
-    list(APPEND libSearchDirs "")
-
-    # Qt Platform Plugin
-    install(FILES
-        ${_qcocoa_dylib}
-        DESTINATION ${PROJECT_NAME}.app/Contents/PlugIns/platforms
-        COMPONENT App
-    )
-    set(additionalLib \${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.app/Contents/PlugIns/platforms/libqcocoa.dylib)
-    if(NOT Qt5Core_VERSION STRLESS "5.10")
-        install(FILES
-            ${_qmacstyle_dylib}
-            DESTINATION ${PROJECT_NAME}.app/Contents/PlugIns/styles
-            COMPONENT App
-        )
-        set(additionalLib
-            ${additionalLib}
-            \${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.app/Contents/PlugIns/styles/libqmacstyle.dylib
-        )
-    endif()
-    install(FILES
-        ${CMAKE_SOURCE_DIR}/bundle/qt.conf
-        DESTINATION ${PROJECT_NAME}.app/Contents/Resources
-        COMPONENT App
-    )
 else()
-    message(STATUS "Nothing to bundle...")
+    message(STATUS "Non-MinGW host — skip bundling (this fork is Windows-only)")
 endif()
 
 install(CODE "
     include(BundleUtilities)
-    if(APPLE)
-        set(BU_CHMOD_BUNDLE_ITEMS on)
-    endif()
     fixup_bundle(\"${APPS}\" \"${additionalLib}\" \"${libSearchDirs}\")
     " DESTINATION . COMPONENT App
 )

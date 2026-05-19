@@ -1,26 +1,28 @@
 /*
  * Copyright (C) 2014 Red Hat
+ * Copyright (C) 2026 Keenetic anti-DPI VPN client (fork)
  *
- * This file is part of openconnect-gui.
- *
- * openconnect-gui is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * GPLv2 — see LICENSE.txt
  */
 
 #pragma once
 
-#include "keypair.h"
+#include <QByteArray>
+#include <QString>
+#include <QWidget>
 
+/*
+ * Keenetic-camouflage StoredServer.
+ *
+ * Removed (vs upstream openconnect-gui 1.5.3):
+ *   - client cert / key / TPM / token fields (no per-user PKI auth)
+ *   - groupname / server_hash (TOFU pinning replaced with bundled CA)
+ *   - disable_udp (DTLS always disabled in this fork)
+ *
+ * Added:
+ *   - camouflage_secret (encrypted at rest via QSettings + Windows DPAPI later)
+ *   - tunnel_url        (CONNECT path; default /api/v1/session)
+ */
 class StoredServer {
 public:
     StoredServer();
@@ -35,35 +37,22 @@ public:
     const QString& get_password() const;
     void set_password(const QString& password);
 
-    const QString& get_groupname() const;
-    void set_groupname(const QString& groupname);
-
     const QString& get_servername() const;
     void set_servername(const QString& servername);
 
     const QString& get_label() const;
     void set_label(const QString& label);
 
-    bool get_disable_udp() const;
-    void set_disable_udp(bool v);
+    /* Keenetic camouflage fields. */
+    const QString& get_camouflage_secret() const;
+    void set_camouflage_secret(const QString& secret);
+    const QString& get_tunnel_url() const;
+    void set_tunnel_url(const QString& url);
 
-    QString get_cert_file();
-    QString get_key_file();
-    QString get_key_url() const;
+    /* Bundled CA file — defaults to keenetic-ca.crt next to the GUI exe. */
     QString get_ca_cert_file();
 
-    void clear_cert();
-    void clear_key();
-    void clear_ca();
     void clear_password();
-    void clear_groupname();
-    void clear_server_hash();
-
-    QString get_client_cert_hash();
-    int set_client_cert(const QString& filename);
-
-    QString get_ca_cert_hash();
-    int set_ca_cert(const QString& filename);
 
     bool get_batch_mode() const;
     void set_batch_mode(const bool mode);
@@ -71,20 +60,8 @@ public:
     bool get_minimize() const;
     void set_minimize(const bool t);
 
-    bool get_proxy() const;
-    void set_proxy(const bool t);
-
     int get_reconnect_timeout() const;
     void set_reconnect_timeout(const int timeout);
-
-    int get_dtls_reconnect_timeout() const;
-    void set_dtls_reconnect_timeout(const int timeout);
-
-    QString get_token_str();
-    void set_token_str(const QString& str);
-
-    int get_token_type();
-    void set_token_type(const int type);
 
     int get_protocol_id() const;
     void set_protocol_id(const int id);
@@ -92,36 +69,21 @@ public:
     const char* get_protocol_name() const;
     void set_protocol_name(const QString name);
 
-    unsigned get_server_hash(QByteArray& hash) const;
-    void get_server_hash(QString& hash) const;
-    void set_server_hash(const unsigned algo, const QByteArray& hash);
-
-    bool client_is_complete() const;
-
     void set_window(QWidget* w);
-
-    int set_client_key(const QString& filename);
 
     QString m_last_err;
 
 private:
-    bool m_batch_mode;
-    bool m_minimize_on_connect;
-    bool m_proxy;
-    bool m_disable_udp;
-    int m_reconnect_timeout;
-    int m_dtls_attempt_period;
+    bool m_batch_mode = false;
+    bool m_minimize_on_connect = false;
+    int m_reconnect_timeout = 30;
     QString m_username;
     QString m_password;
-    QString m_groupname;
     QString m_servername;
-    QString m_token_string;
     QString m_label;
-    int m_token_type;
-    int m_protocol_id;
-    QString m_protocol_name;
-    QByteArray m_server_hash;
-    unsigned m_server_hash_algo;
-    Cert m_ca_cert;
-    KeyPair m_client;
+    /* Keenetic camouflage profile fields. */
+    QString m_camouflage_secret;
+    QString m_tunnel_url = QStringLiteral("/api/v1/session");
+    int m_protocol_id = 0;
+    QString m_protocol_name = QStringLiteral("anyconnect");
 };

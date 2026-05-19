@@ -1,24 +1,22 @@
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 
-if(APPLE)
-     if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "" FORCE)
-    endif()
-endif()
+# Keenetic anti-DPI VPN client — fork of openconnect-gui.
+# Windows-only single-protocol client for our patched ocserv.
+# Upstream macOS/Linux/Apple-specific configuration removed.
 
-project(openconnect-gui
-    VERSION 1.5.3
+project(keenetic-vpn-gui
+    VERSION 1.0.0
     LANGUAGES CXX
 )
 
-message(STATUS "Building ${PROJECT_NAME} v${PROJECT_VERSION} [cmake]")
+message(STATUS "Building ${PROJECT_NAME} v${PROJECT_VERSION} [Keenetic anti-DPI fork]")
 
-set(PRODUCT_NAME_SHORT "OpenConnect-GUI")
-set(PRODUCT_NAME_LONG "OpenConnect-GUI VPN client")
-set(PRODUCT_NAME_COMPANY "OpenConnect-GUI Team")
-set(PRODUCT_NAME_COMPANY_DOMAIN "openconnect.github.io")
-set(PRODUCT_NAME_COPYRIGHT_SHORT "Copyright (C) 2016-2019 OpenConnect-GUI Team")
-set(PRODUCT_NAME_COPYRIGHT_FULL "Copyright (C) 2014-2015 Red Hat Inc.<br>${PRODUCT_NAME_COPYRIGHT_SHORT}")
+set(PRODUCT_NAME_SHORT "Keenetic-VPN")
+set(PRODUCT_NAME_LONG "Keenetic anti-DPI VPN client")
+set(PRODUCT_NAME_COMPANY "Keenetic anti-DPI Team")
+set(PRODUCT_NAME_COMPANY_DOMAIN "github.io")
+set(PRODUCT_NAME_COPYRIGHT_SHORT "Copyright (C) 2026 Keenetic anti-DPI Team")
+set(PRODUCT_NAME_COPYRIGHT_FULL "Copyright (C) 2014-2015 Red Hat Inc.<br>Copyright (C) 2016-2019 OpenConnect-GUI Team<br>${PRODUCT_NAME_COPYRIGHT_SHORT}")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake/Modules/")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake/Includes/")
@@ -26,9 +24,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake/Includes/")
 include(ProjectSettings)
 include(ProjectDependencies)
 
-if(MINGW)
-    add_subdirectory(nsis)
-endif()
+# nsis/ subdir removed — replaced with WiX MSI in installer/ (Phase 5).
 add_subdirectory(src)
 
 install(FILES LICENSE.txt

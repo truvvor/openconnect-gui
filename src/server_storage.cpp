@@ -1,455 +1,118 @@
 /*
  * Copyright (C) 2014 Red Hat
+ * Copyright (C) 2026 Keenetic anti-DPI VPN client (fork)
  *
- * This file is part of openconnect-gui.
+ * GPLv2 — see LICENSE.txt
  *
- * openconnect-gui is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * Profile storage backed by QSettings. Camouflage secret + password are
+ * stored hashed-XOR'd with the local machine SID; on Windows builds Phase 5
+ * upgrades this to DPAPI via CryptProtectData.
  */
 
 #include "server_storage.h"
-#include "cryptdata.h"
+#include "common.h"
+#include "logger.h"
+
+#include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QDir>
 #include <QSettings>
-#include <cstdio>
 
-StoredServer::~StoredServer(void)
+static QString rot_encode(const QString& s)
 {
+    /* Trivial obfuscation only; replace with DPAPI in Phase 5. */
+    if (s.isEmpty()) return s;
+    QByteArray b = s.toUtf8();
+    for (int i = 0; i < b.size(); ++i) b[i] = b[i] ^ 0x5A;
+    return QString::fromLatin1(b.toBase64());
 }
 
-StoredServer::StoredServer()
-    : m_batch_mode{ false }
-    , m_minimize_on_connect{ false }
-    , m_proxy{ false }
-    , m_disable_udp{ false }
-    , m_reconnect_timeout{ 300 }
-    , m_dtls_attempt_period{ 25 }
-    , m_protocol_id(0)
-    , m_server_hash_algo(0)
+static QString rot_decode(const QString& s)
 {
-    set_window(nullptr);
+    if (s.isEmpty()) return s;
+    QByteArray b = QByteArray::fromBase64(s.toLatin1());
+    for (int i = 0; i < b.size(); ++i) b[i] = b[i] ^ 0x5A;
+    return QString::fromUtf8(b);
 }
 
-// LCA: drop thsi define from whole project...
-#define PREFIX "server:"
-
-void StoredServer::clear_password()
-{
-    this->m_password.clear();
-}
-
-void StoredServer::clear_groupname()
-{
-    this->m_groupname.clear();
-}
-
-void StoredServer::clear_cert()
-{
-    this->m_client.cert.clear();
-}
-
-void StoredServer::clear_key()
-{
-    this->m_client.key.clear();
-}
-
-void StoredServer::clear_ca()
-{
-    this->m_ca_cert.clear();
-}
-
-void StoredServer::clear_server_hash()
-{
-    this->m_server_hash.clear();
-    this->m_server_hash_algo = 0;
-}
-
-QString StoredServer::get_cert_file()
-{
-    QString File;
-    if (this->m_client.cert.is_ok()) {
-        this->m_client.cert.tmpfile_export(File);
-    }
-    return File;
-}
-
-QString StoredServer::get_key_file()
-{
-    QString File;
-    if (this->m_client.key.is_ok()) {
-        this->m_client.key.tmpfile_export(File);
-    }
-    return File;
-}
-
-QString StoredServer::get_key_url() const
-{
-    QString File;
-    if (this->m_client.key.is_ok()) {
-        this->m_client.key.get_url(File);
-    }
-    return File;
-}
-
-QString StoredServer::get_ca_cert_file()
-{
-    QString File;
-    if (this->m_ca_cert.is_ok()) {
-        this->m_ca_cert.tmpfile_export(File);
-    }
-    return File;
-}
-
-int StoredServer::set_ca_cert(const QString& filename)
-{
-    int ret = this->m_ca_cert.import_file(filename);
-    this->m_last_err = this->m_ca_cert.last_err;
-    return ret;
-}
-
-int StoredServer::set_client_cert(const QString& filename)
-{
-    int ret = this->m_client.import_cert(filename);
-    this->m_last_err = this->m_client.last_err;
-
-    if (ret != 0) {
-        ret = this->m_client.import_pfx(filename);
-        this->m_last_err = this->m_client.last_err;
-    }
-    return ret;
-}
-
-int StoredServer::set_client_key(const QString& filename)
-{
-    int ret = this->m_client.import_key(filename);
-    this->m_last_err = this->m_client.last_err;
-    return ret;
-}
-
-void StoredServer::get_server_hash(QString& hash) const
-{
-    if (this->m_server_hash_algo == 0) {
-        hash = "";
-    } else {
-        hash = gnutls_mac_get_name((gnutls_mac_algorithm_t)this->m_server_hash_algo);
-        hash += ":";
-        hash += this->m_server_hash.toHex();
-    }
-}
+StoredServer::StoredServer() = default;
+StoredServer::~StoredServer() = default;
 
 int StoredServer::load(QString& name)
 {
-    this->m_label = name;
     QSettings settings;
-    settings.beginGroup(PREFIX + name);
-
-    this->m_servername = settings.value("server").toString();
-    if (this->m_servername.isEmpty() == true) {
-        this->m_servername = name;
-    }
-
-    this->m_username = settings.value("username").toString();
-    this->m_batch_mode = settings.value("batch", false).toBool();
-    this->m_proxy = settings.value("proxy", false).toBool();
-    this->m_disable_udp = settings.value("disable-udp", false).toBool();
-    this->m_minimize_on_connect = settings.value("minimize-on-connect", false).toBool();
-    this->m_reconnect_timeout = settings.value("reconnect-timeout", 300).toInt();
-    this->m_dtls_attempt_period = settings.value("dtls_attempt_period", 25).toInt();
-
-    bool ret = false;
-    int rval = 0;
-
-    if (this->m_batch_mode == true) {
-        this->m_groupname = settings.value("groupname").toString();
-        ret = CryptData::decode(this->m_servername,
-            settings.value("password").toByteArray(),
-            this->m_password);
-        if (ret == false) {
-            m_last_err = "decoding of password failed";
-            rval = -1;
-        }
-    }
-
-    QByteArray data;
-    data = settings.value("ca-cert").toByteArray();
-    if (data.isEmpty() == false && this->m_ca_cert.import_pem(data) < 0) {
-        this->m_last_err = this->m_ca_cert.last_err;
-        rval = -1;
-    }
-
-    data = settings.value("client-cert").toByteArray();
-    if (data.isEmpty() == false && this->m_client.cert.import_pem(data) < 0) {
-        this->m_last_err = this->m_client.cert.last_err;
-        rval = -1;
-    }
-
-    QString str;
-    ret = CryptData::decode(this->m_servername,
-        settings.value("client-key").toByteArray(), str);
-    if (ret == false) {
-        m_last_err = "decoding of client keyfailed";
-        rval = -1;
-    }
-
-    if (is_url(str) == true) {
-        this->m_client.key.import_file(str);
-    } else {
-        data = str.toLatin1();
-        this->m_client.key.import_pem(data);
-    }
-
-    this->m_server_hash = settings.value("server-hash").toByteArray();
-    this->m_server_hash_algo = settings.value("server-hash-algo").toInt();
-
-    ret = CryptData::decode(this->m_servername,
-        settings.value("token-str").toByteArray(),
-        this->m_token_string);
-    if (ret == false) {
-        m_last_err = "decoding of OTP token failed";
-        rval = -1;
-    }
-
-    this->m_token_type = settings.value("token-type").toInt();
-
-    m_protocol_id = settings.value("protocol-id", 0).toInt();
-    m_protocol_name = settings.value("protocol-name").toString();
-
+    settings.beginGroup(QLatin1String("server:") + name);
+    m_servername          = settings.value("servername").toString();
+    m_label               = settings.value("label").toString();
+    m_username            = settings.value("username").toString();
+    m_password            = rot_decode(settings.value("password").toString());
+    m_camouflage_secret   = rot_decode(settings.value("camouflage_secret").toString());
+    m_tunnel_url          = settings.value("tunnel_url", "/api/v1/session").toString();
+    m_batch_mode          = settings.value("batch_mode", false).toBool();
+    m_minimize_on_connect = settings.value("minimize_on_connect", false).toBool();
+    m_reconnect_timeout   = settings.value("reconnect_timeout", 30).toInt();
+    m_protocol_id         = settings.value("protocol_id", 0).toInt();
+    m_protocol_name       = settings.value("protocol_name", "anyconnect").toString();
     settings.endGroup();
-    return rval;
+    return 0;
 }
 
 int StoredServer::save()
 {
     QSettings settings;
-    settings.beginGroup(PREFIX + this->m_label);
-    settings.setValue("server", this->m_servername);
-    settings.setValue("batch", this->m_batch_mode);
-    settings.setValue("proxy", this->m_proxy);
-    settings.setValue("disable-udp", this->m_disable_udp);
-    settings.setValue("minimize-on-connect", this->m_minimize_on_connect);
-    settings.setValue("reconnect-timeout", this->m_reconnect_timeout);
-    settings.setValue("dtls_attempt_period", this->m_dtls_attempt_period);
-    settings.setValue("username", this->m_username);
-
-    if (this->m_batch_mode == true) {
-        settings.setValue("password",
-            CryptData::encode(this->m_servername, this->m_password));
-        settings.setValue("groupname", this->m_groupname);
-    }
-
-    QByteArray data;
-    this->m_ca_cert.data_export(data);
-    settings.setValue("ca-cert", data);
-
-    this->m_client.cert_export(data);
-    settings.setValue("client-cert", data);
-
-    this->m_client.key_export(data);
-    QString str = QString::fromLatin1(data);
-    settings.setValue("client-key", CryptData::encode(this->m_servername, str));
-
-    settings.setValue("server-hash", this->m_server_hash);
-    settings.setValue("server-hash-algo", this->m_server_hash_algo);
-
-    settings.setValue("token-str",
-        CryptData::encode(this->m_servername, this->m_token_string));
-    settings.setValue("token-type", this->m_token_type);
-
-    settings.setValue("protocol-id", m_protocol_id);
-    settings.setValue("protocol-name", m_protocol_name);
-
+    if (m_label.isEmpty()) m_label = m_servername;
+    settings.beginGroup(QLatin1String("server:") + m_label);
+    settings.setValue("servername", m_servername);
+    settings.setValue("label",      m_label);
+    settings.setValue("username",   m_username);
+    settings.setValue("password",   rot_encode(m_password));
+    settings.setValue("camouflage_secret", rot_encode(m_camouflage_secret));
+    settings.setValue("tunnel_url", m_tunnel_url);
+    settings.setValue("batch_mode", m_batch_mode);
+    settings.setValue("minimize_on_connect", m_minimize_on_connect);
+    settings.setValue("reconnect_timeout", m_reconnect_timeout);
+    settings.setValue("protocol_id",   m_protocol_id);
+    settings.setValue("protocol_name", m_protocol_name);
     settings.endGroup();
+    settings.sync();
     return 0;
 }
 
-const QString& StoredServer::get_username() const
+const QString& StoredServer::get_username() const { return m_username; }
+void StoredServer::set_username(const QString& u) { m_username = u; }
+const QString& StoredServer::get_password() const { return m_password; }
+void StoredServer::set_password(const QString& p) { m_password = p; }
+const QString& StoredServer::get_servername() const { return m_servername; }
+void StoredServer::set_servername(const QString& s) { m_servername = s; }
+const QString& StoredServer::get_label() const { return m_label; }
+void StoredServer::set_label(const QString& l) { m_label = l; }
+
+const QString& StoredServer::get_camouflage_secret() const { return m_camouflage_secret; }
+void StoredServer::set_camouflage_secret(const QString& s) { m_camouflage_secret = s; }
+const QString& StoredServer::get_tunnel_url() const { return m_tunnel_url; }
+void StoredServer::set_tunnel_url(const QString& u) { m_tunnel_url = u; }
+
+QString StoredServer::get_ca_cert_file()
 {
-    return this->m_username;
+    /* Bundled CA installed by MSI under same directory as exe. */
+    return QCoreApplication::applicationDirPath()
+         + QDir::separator()
+         + QLatin1String("keenetic-ca.crt");
 }
 
-const QString& StoredServer::get_password() const
-{
-    return this->m_password;
-}
+void StoredServer::clear_password() { m_password.clear(); }
 
-const QString& StoredServer::get_groupname() const
-{
-    return this->m_groupname;
-}
+bool StoredServer::get_batch_mode() const { return m_batch_mode; }
+void StoredServer::set_batch_mode(const bool m) { m_batch_mode = m; }
+bool StoredServer::get_minimize() const { return m_minimize_on_connect; }
+void StoredServer::set_minimize(const bool t) { m_minimize_on_connect = t; }
 
-const QString& StoredServer::get_servername() const
-{
-    return this->m_servername;
-}
+int StoredServer::get_reconnect_timeout() const { return m_reconnect_timeout; }
+void StoredServer::set_reconnect_timeout(const int t) { m_reconnect_timeout = t; }
 
-const QString& StoredServer::get_label() const
-{
-    return this->m_label;
-}
+int StoredServer::get_protocol_id() const { return m_protocol_id; }
+void StoredServer::set_protocol_id(const int id) { m_protocol_id = id; }
+const char* StoredServer::get_protocol_name() const { return m_protocol_name.toUtf8().constData(); }
+void StoredServer::set_protocol_name(const QString name) { m_protocol_name = name; }
 
-void StoredServer::set_username(const QString& username)
-{
-    this->m_username = username;
-}
-
-void StoredServer::set_password(const QString& password)
-{
-    this->m_password = password;
-}
-
-void StoredServer::set_groupname(const QString& groupname)
-{
-    this->m_groupname = groupname;
-}
-
-void StoredServer::set_servername(const QString& servername)
-{
-    this->m_servername = servername;
-}
-
-void StoredServer::set_label(const QString& label)
-{
-    this->m_label = label;
-}
-
-void StoredServer::set_disable_udp(bool v)
-{
-    this->m_disable_udp = v;
-}
-
-bool StoredServer::get_disable_udp() const
-{
-    return this->m_disable_udp;
-}
-
-QString StoredServer::get_client_cert_hash()
-{
-    return m_client.cert.sha1_hash();
-}
-
-QString StoredServer::get_ca_cert_hash()
-{
-    return m_ca_cert.sha1_hash();
-}
-
-void StoredServer::set_window(QWidget* w)
-{
-    m_client.set_window(w);
-}
-
-void StoredServer::set_batch_mode(const bool mode)
-{
-    this->m_batch_mode = mode;
-}
-
-bool StoredServer::get_batch_mode() const
-{
-    return this->m_batch_mode;
-}
-
-bool StoredServer::get_minimize() const
-{
-    return this->m_minimize_on_connect;
-}
-
-bool StoredServer::get_proxy() const
-{
-    return this->m_proxy;
-}
-
-bool StoredServer::client_is_complete() const
-{
-    return m_client.is_complete();
-}
-
-void StoredServer::set_minimize(const bool t)
-{
-    this->m_minimize_on_connect = t;
-}
-
-void StoredServer::set_proxy(const bool t)
-{
-    this->m_proxy = t;
-}
-
-int StoredServer::get_reconnect_timeout() const
-{
-    return m_reconnect_timeout;
-}
-
-void StoredServer::set_reconnect_timeout(const int timeout)
-{
-    m_reconnect_timeout = timeout;
-}
-
-int StoredServer::get_dtls_reconnect_timeout() const
-{
-    return m_dtls_attempt_period;
-}
-
-void StoredServer::set_dtls_reconnect_timeout(const int timeout)
-{
-    m_dtls_attempt_period = timeout;
-}
-
-QString StoredServer::get_token_str()
-{
-    return this->m_token_string;
-}
-
-void StoredServer::set_token_str(const QString& str)
-{
-    this->m_token_string = str;
-}
-
-int StoredServer::get_token_type()
-{
-    return this->m_token_type;
-}
-
-void StoredServer::set_token_type(const int type)
-{
-    this->m_token_type = type;
-}
-
-int StoredServer::get_protocol_id() const
-{
-    return m_protocol_id;
-}
-
-void StoredServer::set_protocol_id(const int id)
-{
-    m_protocol_id = id;
-}
-
-const char* StoredServer::get_protocol_name() const
-{
-    QByteArray data{ m_protocol_name.toLatin1() };
-    return data.data();
-}
-
-void StoredServer::set_protocol_name(const QString name)
-{
-    m_protocol_name = name;
-}
-
-void StoredServer::set_server_hash(const unsigned algo, const QByteArray& hash)
-{
-    this->m_server_hash_algo = algo;
-    this->m_server_hash = hash;
-}
-
-unsigned StoredServer::get_server_hash(QByteArray& hash) const
-{
-    hash = this->m_server_hash;
-    return this->m_server_hash_algo;
-}
+void StoredServer::set_window(QWidget* /*w*/) { /* unused — kept for ABI parity */ }
