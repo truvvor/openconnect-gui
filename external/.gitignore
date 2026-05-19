@@ -1,3 +1,5 @@
-*.zip
-*.zip.sha512
-*.txt
+# Phase 1 build artifacts — never commit, regenerate via scripts/build-libopenconnect-keenetic.sh
+openconnect-keenetic/
+openconnect-deps-mingw64/
+openconnect-9.12-keenetic.tar.gz
+openconnect-keenetic_mingw64.zip

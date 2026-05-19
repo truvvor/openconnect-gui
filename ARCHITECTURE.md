@@ -228,23 +228,41 @@ Net code-size reduction: ~40 % LOC.
 
 ## Phases
 
-1. **Phase 0** (this commit). Architecture doc on `keenetic-camouflage` branch.
-2. **Phase 1**. Vendor openconnect + WSL build script; produce
-   `external/openconnect-keenetic_mingw64.zip` artifact. Replace
-   `ProjectExternals_openconnect.cmake` to consume it.
+1. **Phase 0** ✅ DONE (commit 663e313). Architecture doc, Q1-Q5 locked.
+2. **Phase 1** ✅ DONE. Vendored openconnect 9.12 + 3 keenetic patches build
+   under MinGW-w64 from WSL. `external/openconnect-keenetic_mingw64.zip`
+   produced — libopenconnect-5.dll (257 KB stripped) + all GnuTLS/libxml2/
+   nettle deps bundled (4.6 MB total zip). Build script:
+   `scripts/build-libopenconnect-keenetic.sh`.
+   - source bootstrap: `external/openconnect-9.12-keenetic.tar.gz` (8 MB) is
+     a snapshot from `letta:/data/keenetic-sdk-kn3010/build_dir/.../openconnect-9.12-2`
+     where the 3 patches are already applied. The script regenerates autotools
+     (libtoolize + autoreconf), cross-builds with mingw-w64 and packages.
+   - in-tree fix needed for `gnutls.c`: `#include <netinet/tcp.h>` was wrapped
+     in `#ifdef _WIN32` (winsock2.h / ws2tcpip.h on Windows). Patch refresh
+     for `200-xray-scatter.patch` recommended (TODO).
+   - `main.c` (openconnect.exe CLI) doesn't build under mingw because our
+     `300-keenetic-passwd.patch` references POSIX syslog (`openlog`/`LOG_DAEMON`).
+     We don't need CLI — GUI links directly with the DLL. When/if the CLI
+     becomes needed, add a `400-mingw-cli.patch` wrapping syslog in `#ifndef _WIN32`.
+   - **Phase 1 follow-up (deferred to Phase 2):** add a public-API setter
+     `openconnect_set_camouflage_secret(vpninfo, secret)` in `library.c` +
+     `openconnect.h` (4th patch `400-public-camouflage-api.patch`). Currently
+     the field exists internally but the GUI cannot set it without either CLI
+     parsing or struct-poking. Phase 2 will add this cleanly.
 3. **Phase 2**. Rip out cert/token/PKCS#11 code; add camouflage-secret
    and tunnel-url to profile schema + editdialog. Wire `vpninfo.cpp`
-   to call `openconnect_set_camouflage_secret` (we add this getter/setter
-   as a 4th patch over our vendored openconnect, to avoid going through CLI).
-3. **Phase 3**. `wintun-service` project: skeleton, install/uninstall,
+   to call `openconnect_set_camouflage_secret`. Plus the 400-public-api
+   patch above.
+4. **Phase 3**. `wintun-service` project: skeleton, install/uninstall,
    pipe server, WinTun adapter create/destroy, route table edits.
-4. **Phase 4**. Replace `setup_tun_vfn` in `vpninfo.cpp` with RPC call to
+5. **Phase 4**. Replace `setup_tun_vfn` in `vpninfo.cpp` with RPC call to
    the service. Add reconnect / status / disconnect flow.
-5. **Phase 5**. WiX MSI: bundles GUI exe, service exe, WinTun driver,
+6. **Phase 5**. WiX MSI: bundles GUI exe, service exe, WinTun driver,
    LE bundle, Qt deps, GnuTLS DLLs. Registers service with ACL.
-6. **Phase 6**. GitHub Actions: matrix build (debug/release), sign,
+7. **Phase 6**. GitHub Actions: matrix build (debug/release), sign,
    upload MSI as artifact. Tag → release.
-7. **Phase 7**. Live test against KN-3710 server in MSK. Document
+8. **Phase 7**. Live test against KN-3710 server in MSK. Document
    troubleshooting steps.
 
 Each phase ends with a tag (`phase-1`, `phase-2`, …) so we can roll back.

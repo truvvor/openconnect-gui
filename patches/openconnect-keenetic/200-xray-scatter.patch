@@ -1,0 +1,88 @@
+--- a/gnutls.c	2026-04-10 22:45:24.988867340 +0000
++++ b/gnutls.c	2026-04-10 22:45:25.012867023 +0000
+@@ -18,6 +18,8 @@
+ #include <config.h>
+ 
+ #include "openconnect-internal.h"
++#include <netinet/tcp.h>
++#include <gnutls/crypto.h>
+ 
+ #include "gnutls.h"
+ 
+@@ -2325,6 +2327,60 @@
+ }
+ #endif
+ 
++
++/* Xray-compatible TCP Scatter for anti-DPI.
++ *
++ * Strategy: fragment TLS ClientHello so that SNI never appears in a
++ * single TCP segment.  The very first write (which carries the TLS
++ * record header + start of ClientHello) is split into a tiny leading
++ * chunk (1-3 bytes), followed by medium-sized random chunks.  This
++ * guarantees that the DPI box, which typically inspects only the first
++ * TCP segment, sees no SNI field. */
++
++static int scatter_writes_left_g = 0;
++static int scatter_is_first_g = 0;
++
++static ssize_t scatter_push_func(gnutls_transport_ptr_t ptr,
++                                  const void *data, size_t len)
++{
++	int fd = (int)(intptr_t)ptr;
++
++	if (scatter_writes_left_g > 0 && len > 16) {
++		scatter_writes_left_g--;
++		const unsigned char *p = data;
++		size_t remaining = len, total = 0;
++		int nodelay = 1;
++		uint8_t rnd[2];
++
++		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
++
++		/* First write contains ClientHello -- send a tiny leading
++		 * fragment (1-3 bytes) so the first TCP segment is too small
++		 * to contain SNI.  DPI that only looks at segment #1 fails. */
++		if (scatter_is_first_g) {
++			scatter_is_first_g = 0;
++			gnutls_rnd(GNUTLS_RND_NONCE, rnd, sizeof(rnd));
++			size_t first = 1 + (rnd[0] % 3);   /* 1, 2, or 3 bytes */
++			if (first > remaining) first = remaining;
++			ssize_t sent = send(fd, p, first, 0);
++			if (sent < 0) return sent;
++			p += sent; total += sent; remaining -= sent;
++		}
++
++		/* Remaining data in random 64-256 byte chunks */
++		while (remaining > 0) {
++			gnutls_rnd(GNUTLS_RND_NONCE, rnd, sizeof(rnd));
++			size_t chunk = 64 + (((rnd[0] << 8) | rnd[1]) % 193);
++			if (chunk > remaining) chunk = remaining;
++			ssize_t sent = send(fd, p, chunk, 0);
++			if (sent < 0) return sent;
++			p += sent; total += sent; remaining -= sent;
++		}
++		return (ssize_t)total;
++	}
++	return send(fd, data, len, 0);
++}
++
+ int openconnect_open_https(struct openconnect_info *vpninfo)
+ {
+ 	int ssl_sock = -1;
+@@ -2537,6 +2593,15 @@
+ 	gnutls_credentials_set(vpninfo->https_sess, GNUTLS_CRD_CERTIFICATE, vpninfo->https_cred);
+ 	gnutls_transport_set_ptr(vpninfo->https_sess,(gnutls_transport_ptr_t)(intptr_t)ssl_sock);
+ 
++	/* Xray-compatible: scatter TLS handshake to defeat SNI-based DPI */
++	if (vpninfo->camouflage_secret) {
++		scatter_writes_left_g = 8;
++		scatter_is_first_g = 1;
++		gnutls_transport_set_push_function(vpninfo->https_sess, scatter_push_func);
++		vpn_progress(vpninfo, PRG_INFO,
++			_("Anti-DPI: TCP scatter enabled (first frag 1-3 bytes)\n"));
++	}
++
+ 	vpn_progress(vpninfo, PRG_INFO, _("SSL negotiation with %s\n"),
+ 		     vpninfo->hostname);
+ 
