@@ -27,6 +27,13 @@ include(ProjectDependencies)
 # nsis/ subdir removed — replaced with WiX MSI in installer/ (Phase 5).
 add_subdirectory(src)
 
+# WinTun service (Phase 3) — privileged helper that owns the WinTun adapter
+# so the GUI doesn't need UAC at every launch. Built only on Windows.
+if(WIN32)
+    add_subdirectory(wintun-service)
+    add_subdirectory(installer)
+endif()
+
 install(FILES LICENSE.txt
     DESTINATION .
     COMPONENT App

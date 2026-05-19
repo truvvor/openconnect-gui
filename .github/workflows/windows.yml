@@ -1,0 +1,189 @@
+name: Windows build
+
+on:
+  push:
+    branches: [ keenetic-camouflage, master ]
+    tags:     [ "phase-*", "v*" ]
+  pull_request:
+    branches: [ keenetic-camouflage ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: MinGW64 + Qt5.15 + WiX MSI
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    env:
+      QT_VERSION:      "5.15.2"
+      MSYS2_PREFIX:    "C:/msys64/mingw64"
+      OC_BUILD_CACHE:  "${{ github.workspace }}/external/openconnect-keenetic_mingw64.zip"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Setup MSYS2 + MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-gnutls
+            mingw-w64-x86_64-nettle
+            mingw-w64-x86_64-libxml2
+            mingw-w64-x86_64-libidn2
+            mingw-w64-x86_64-p11-kit
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-pkg-config
+            autotools
+            autoconf-archive
+            libtool
+            patch
+            git
+            unzip
+            zip
+
+      - name: Install Qt5
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_mingw81
+          modules: ''
+          cache: true
+
+      - name: Install WiX 3.11
+        run: choco install wixtoolset -y --no-progress
+        shell: cmd
+
+      - name: Restore openconnect-keenetic_mingw64.zip cache
+        id: oc-zip-cache
+        uses: actions/cache@v4
+        with:
+          path: external/openconnect-keenetic_mingw64.zip
+          key: oc-keenetic-${{ hashFiles('patches/openconnect-keenetic/**', 'scripts/build-libopenconnect-keenetic.sh', 'external/openconnect-9.12-keenetic.tar.gz.sha256') }}
+
+      - name: Download openconnect-9.12-keenetic.tar.gz from artifact storage
+        if:   steps.oc-zip-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # Phase 1 tarball is not committed; CI fetches it from a release asset.
+          # For private deployments, host the tarball as a GitHub release asset
+          # of this repo, or as a private artifact accessible to the CI runner.
+          $url = "https://github.com/${{ github.repository }}/releases/download/oc-source-v9.12-keenetic/openconnect-9.12-keenetic.tar.gz"
+          New-Item -ItemType Directory -Force -Path external | Out-Null
+          try {
+            Invoke-WebRequest -Uri $url -OutFile external/openconnect-9.12-keenetic.tar.gz -ErrorAction Stop
+          } catch {
+            Write-Host "::warning::tarball release asset not found; build will fail without it"
+            exit 1
+          }
+
+      - name: Build libopenconnect-keenetic.dll
+        if:   steps.oc-zip-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: |
+          ./scripts/build-libopenconnect-keenetic.sh
+
+      - name: Verify libopenconnect-keenetic_mingw64.zip
+        shell: pwsh
+        run: |
+          if (!(Test-Path "external/openconnect-keenetic_mingw64.zip")) {
+            throw "missing external/openconnect-keenetic_mingw64.zip"
+          }
+          (Get-Item external/openconnect-keenetic_mingw64.zip).Length
+
+      - name: Download WinTun.dll
+        shell: pwsh
+        run: |
+          $url = "https://www.wintun.net/builds/wintun-0.14.1.zip"
+          $tmp = "$env:TEMP\wintun.zip"
+          Invoke-WebRequest -Uri $url -OutFile $tmp
+          Expand-Archive $tmp -DestinationPath $env:TEMP\wintun-pack -Force
+          New-Item -ItemType Directory -Force -Path external/wintun-bin | Out-Null
+          Copy-Item "$env:TEMP\wintun-pack\wintun\bin\amd64\wintun.dll" external/wintun-bin/wintun.dll
+
+      - name: Generate bundled CA (Let's Encrypt + ISRG)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bundle | Out-Null
+          # Fetch LE chain bundle from letsencrypt.org/certificates.
+          $roots = @(
+            "https://letsencrypt.org/certs/2024/r10.pem",
+            "https://letsencrypt.org/certs/2024/r11.pem",
+            "https://letsencrypt.org/certs/2024/r12.pem",
+            "https://letsencrypt.org/certs/2024/r13.pem",
+            "https://letsencrypt.org/certs/2024/r14.pem",
+            "https://letsencrypt.org/certs/2024/e5.pem",
+            "https://letsencrypt.org/certs/2024/e6.pem",
+            "https://letsencrypt.org/certs/2024/e7.pem",
+            "https://letsencrypt.org/certs/2024/e8.pem",
+            "https://letsencrypt.org/certs/2024/e9.pem",
+            "https://letsencrypt.org/certs/isrgrootx1.pem",
+            "https://letsencrypt.org/certs/isrg-root-x2.pem"
+          )
+          $out = "bundle/keenetic-ca.crt"
+          if (Test-Path $out) { Remove-Item $out }
+          foreach ($r in $roots) {
+            try {
+              $body = (Invoke-WebRequest $r -UseBasicParsing).Content
+              Add-Content $out $body
+            } catch {
+              Write-Host "::warning::failed to fetch $r"
+            }
+          }
+          $sz = (Get-Item $out).Length
+          Write-Host "keenetic-ca.crt = $sz bytes"
+
+      - name: Configure & build GUI + service
+        shell: cmd
+        run: |
+          cmake -S . -B build -G "MinGW Makefiles" ^
+                -DCMAKE_BUILD_TYPE=Release ^
+                -DCMAKE_PREFIX_PATH="%QT_ROOT_DIR%"
+          cmake --build build --parallel
+
+      - name: Build MSI installer
+        shell: cmd
+        env:
+          KEENETIC_SIGN_PFX:  ${{ secrets.KEENETIC_SIGN_PFX }}
+          KEENETIC_SIGN_PASS: ${{ secrets.KEENETIC_SIGN_PASS }}
+        run: |
+          cmake --build build --target installer
+
+      - name: Upload MSI artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Keenetic-VPN-x64
+          path: build/Keenetic-VPN-*-x64.msi
+          if-no-files-found: error
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            build/**/CMakeOutput.log
+            build/**/CMakeError.log
+            external/openconnect-keenetic/config.log
+
+  release:
+    name: Attach MSI to release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: Keenetic-VPN-x64 }
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Keenetic-VPN-*-x64.msi
+          generate_release_notes: true

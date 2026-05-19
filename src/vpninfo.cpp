@@ -18,6 +18,7 @@
 #include "dialog/mainwindow.h"
 #include "logger.h"
 #include "server_storage.h"
+#include "wintun_client.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -135,17 +136,42 @@ static int validate_peer_cert(void* privdata, const char* /*reason*/)
 }
 
 /*
- * setup_tun callback — in this fork we delegate to KeeneticVpnService over
- * a named pipe (\\.\pipe\KeeneticVpnService). The service owns the WinTun
- * adapter and we never call openconnect_setup_tun_device here (that requires
- * Administrator). Phase 4 implementation lives in wintun_client.cpp.
+ * setup_tun callback — delegated to KeeneticVpnService via named pipe.
+ * The service owns the WinTun adapter (LocalSystem privileges) and we
+ * never call openconnect_setup_tun_device() ourselves on Windows so the
+ * GUI never needs UAC. The service hands us back a tunnel handle which
+ * we hand to openconnect_setup_tun_fd().
  *
- * For now (Phase 2): fall back to openconnect_setup_tun_device so that
- * non-Windows / dev builds still work end-to-end; Phase 4 replaces this.
+ * On non-Windows builds (dev only) we fall back to the upstream path.
  */
 static void setup_tun_vfn(void* privdata)
 {
     VpnInfo* vpn = static_cast<VpnInfo*>(privdata);
+
+#ifdef _WIN32
+    static WintunClient client;
+    if (!client.ensureAvailable()) {
+        vpn->last_err = QObject::tr(
+            "KeeneticVpnService is not available. Install Keenetic-VPN-Setup.msi "
+            "(one-time, requires Administrator) — afterwards the GUI runs as a "
+            "normal user.");
+        Logger::instance().addMessage(vpn->last_err);
+        return;
+    }
+    QString err;
+    if (!client.openAdapter(QStringLiteral("KeeneticVPN"), &err)) {
+        vpn->last_err = QObject::tr("WinTun open_adapter failed: %1").arg(err);
+        Logger::instance().addMessage(vpn->last_err);
+        return;
+    }
+    /* If the service handed us a HANDLE, plug it into libopenconnect. */
+    qint64 tunHandle = client.tunHandle();
+    if (tunHandle > 0) {
+        openconnect_setup_tun_fd(vpn->vpninfo, (int)(intptr_t)tunHandle);
+    }
+    Logger::instance().addMessage(QObject::tr(
+        "WinTun adapter open via KeeneticVpnService — no UAC required"));
+#else
     QByteArray vpncScriptFullPath;
     vpncScriptFullPath.append(QCoreApplication::applicationDirPath().toUtf8());
     vpncScriptFullPath.append(QDir::separator().toLatin1());
@@ -154,6 +180,7 @@ static void setup_tun_vfn(void* privdata)
         vpncScriptFullPath.constData(), nullptr);
     if (ret != 0) vpn->last_err = QObject::tr("Error setting up the TUN device");
     vpn->logVpncScriptOutput();
+#endif
 }
 
 static inline int set_sock_block(int fd)

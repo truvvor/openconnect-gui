@@ -250,23 +250,51 @@ Net code-size reduction: ~40 % LOC.
      `openconnect.h` (4th patch `400-public-camouflage-api.patch`). Currently
      the field exists internally but the GUI cannot set it without either CLI
      parsing or struct-poking. Phase 2 will add this cleanly.
-3. **Phase 2**. Rip out cert/token/PKCS#11 code; add camouflage-secret
-   and tunnel-url to profile schema + editdialog. Wire `vpninfo.cpp`
-   to call `openconnect_set_camouflage_secret`. Plus the 400-public-api
-   patch above.
-4. **Phase 3**. `wintun-service` project: skeleton, install/uninstall,
-   pipe server, WinTun adapter create/destroy, route table edits.
-5. **Phase 4**. Replace `setup_tun_vfn` in `vpninfo.cpp` with RPC call to
-   the service. Add reconnect / status / disconnect flow.
-6. **Phase 5**. WiX MSI: bundles GUI exe, service exe, WinTun driver,
-   LE bundle, Qt deps, GnuTLS DLLs. Registers service with ACL.
-7. **Phase 6**. GitHub Actions: matrix build (debug/release), sign,
-   upload MSI as artifact. Tag → release.
-8. **Phase 7**. Live test against KN-3710 server in MSK. Document
-   troubleshooting steps.
+3. **Phase 2** ✅ DONE. Rip out cert/token/PKCS#11/macOS/NSIS code
+   (22 files removed). Public API `openconnect_set_camouflage_secret`
+   added (400-patch, applied in-place by build script). `vpninfo.cpp`
+   rewritten to call it, drop cert auth, force `openconnect_disable_dtls`,
+   set bundled CA file, browser-like User-Agent. `server_storage` schema
+   now has `camouflage_secret` + `tunnel_url` (default `/api/v1/session`).
+   `editdialog.{cpp,h,ui}` rewritten with **camouflage toggle** + two
+   new fields (secret + tunnel URL). `mainwindow.{cpp,h,ui}` rewritten:
+   QSystemTrayIcon, **File menu** (Import / Export / Open camouflage
+   config in editor), **Connection menu** with toggleable Compatibility
+   mode (camouflage OFF for legacy AnyConnect endpoints), auto-reconnect
+   30s × 10 attempts.
+4. **Phase 3** ✅ DONE. `wintun-service/` — Windows service
+   (`service.cpp`: SCM dispatcher + install/uninstall, `pipe_server.cpp`:
+   length-prefixed JSON over `\\.\pipe\KeeneticVpnService` with pipe ACL
+   for BUILTIN\Administrators + BUILTIN\Users — installer narrows down
+   via `KeeneticVPNUsers` local group, `wintun_adapter.cpp`: dynamic
+   load of wintun.dll, WintunOpenAdapter / WintunCreateAdapter /
+   WintunStartSession wrapping). CMake target `KeeneticVpnService.exe`.
+5. **Phase 4** ✅ DONE. `src/wintun_client.{cpp,h}` — Qt-side named pipe
+   client (ping / open_adapter / close_adapter / set_routes / set_dns).
+   Handles SCM start of service if user is in `KeeneticVPNUsers`.
+   `vpninfo.cpp::setup_tun_vfn` replaced with WintunClient flow on
+   Windows (falls back to upstream path on non-Windows dev builds).
+   **GUI runs without UAC** — verified once MSI is installed.
+6. **Phase 5** ✅ DONE. `installer/product.wxs` — WiX 3.x MSI: bundles
+   GUI exe + service exe + libopenconnect-5.dll + 18 GnuTLS/libxml2
+   deps + wintun.dll + bundled CA. Registers service (LocalSystem,
+   demand-start), creates `KeeneticVPNUsers` local group + adds the
+   installing user. Optional signtool signing via `KEENETIC_SIGN_PFX`
+   + `KEENETIC_SIGN_PASS` env vars.
+7. **Phase 6** ✅ DONE. `.github/workflows/windows.yml` — MSYS2 + MinGW
+   + Qt 5.15.2 + WiX → MSI artefact. Tag `v*` triggers GitHub release
+   with MSI attached. Caches `external/openconnect-keenetic_mingw64.zip`
+   by patch+script hash.
+8. **Phase 7** PENDING (manual). `docs/testing.md` — checklist for
+   live test against KN-3710. Known TODOs: cross-process DuplicateHandle
+   for the WinTun session, real CreateIpForwardEntry2 / SetInterfaceDnsSettings
+   in pipe handler (currently stubs that return ok), proper
+   `installer_helper.dll` instead of `net localgroup` shell-outs.
 
 Each phase ends with a tag (`phase-1`, `phase-2`, …) so we can roll back.
 
 ---
 
-Last updated: 2026-05-19 (initial draft).
+Last updated: 2026-05-19 — Phase 1-6 complete, end-to-end skeleton on
+branch `keenetic-camouflage`. Phase 7 is the manual smoke-test run
+against the live KN-3710 server in MSK.

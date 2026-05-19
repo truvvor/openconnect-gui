@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keenetic anti-DPI VPN — Windows MSI installer (WiX 3.x).
+
+  Goals:
+    * Bundle the GUI exe + service exe + libopenconnect-keenetic.dll +
+      bundled CA + WinTun.dll into one MSI.
+    * Install the service (LocalSystem, demand-start) and a local group
+      "KeeneticVPNUsers". Add the installing user to that group.
+    * Tighten SCM ACL on KeeneticVpnService so members of the group can
+      `sc start` it without UAC.
+    * On uninstall: stop + remove the service, remove the group, files.
+
+  Build: WiX 3.11+ (candle + light). Wired into .github/workflows/windows.yml.
+  Signing: signtool if KEENETIC_SIGN_PFX env var is set; otherwise unsigned
+  (SmartScreen will warn — expected for dev builds).
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Product Id="*"
+           Name="Keenetic anti-DPI VPN"
+           Language="1033"
+           Version="1.0.0"
+           Manufacturer="Keenetic anti-DPI Team"
+           UpgradeCode="A18F2D9D-9D6E-4B41-8E5C-1C9A6D7B9F11">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="Keenetic anti-DPI VPN client (camouflage + WinTun no-UAC service)"
+             Manufacturer="Keenetic anti-DPI Team" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="KeeneticVpn.ico" SourceFile="..\src\openconnect-gui.ico" />
+    <Property Id="ARPPRODUCTICON" Value="KeeneticVpn.ico" />
+    <Property Id="ARPNOREPAIR"   Value="yes" Secure="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Keenetic VPN">
+          <Directory Id="PluginsFolder" Name="plugins" />
+        </Directory>
+      </Directory>
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="KeeneticDataFolder" Name="KeeneticVPN" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="KeeneticStartMenu" Name="Keenetic VPN" />
+      </Directory>
+    </Directory>
+
+    <!-- ===== GUI executable ===== -->
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="GuiExe" Guid="*">
+        <File Id="GuiExeFile" Name="keenetic-vpn-gui.exe"
+              Source="$(var.BuildDir)\keenetic-vpn-gui.exe" KeyPath="yes" />
+        <Shortcut Id="StartMenuShortcut"
+                  Directory="KeeneticStartMenu"
+                  Name="Keenetic anti-DPI VPN"
+                  Description="Connect to anti-DPI VPN"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="KeeneticVpn.ico" Advertise="no" />
+      </Component>
+
+      <Component Id="ServiceExe" Guid="*">
+        <File Id="ServiceExeFile" Name="KeeneticVpnService.exe"
+              Source="$(var.BuildDir)\KeeneticVpnService.exe" KeyPath="yes" />
+
+        <!-- Install the service: LocalSystem, demand-start. -->
+        <ServiceInstall Id="KeeneticSvc"
+                        Type="ownProcess"
+                        Name="KeeneticVpnService"
+                        DisplayName="Keenetic anti-DPI VPN — WinTun service"
+                        Description="Owns the WinTun adapter so the GUI runs without UAC."
+                        Start="demand"
+                        Account="LocalSystem"
+                        ErrorControl="normal" />
+        <ServiceControl Id="KeeneticSvcCtrl"
+                        Name="KeeneticVpnService"
+                        Stop="both" Remove="uninstall"
+                        Wait="yes" />
+      </Component>
+
+      <Component Id="WintunDll" Guid="*">
+        <File Id="WintunDllFile" Name="wintun.dll"
+              Source="$(var.WintunDir)\wintun.dll" KeyPath="yes" />
+      </Component>
+
+      <!-- Camouflage CA bundle (Let's Encrypt R10-R14 + E5-E9 + ISRG X1/X2) -->
+      <Component Id="CaBundle" Guid="*">
+        <File Id="CaBundleFile" Name="keenetic-ca.crt"
+              Source="$(var.BundleDir)\keenetic-ca.crt" KeyPath="yes" />
+      </Component>
+
+      <!-- libopenconnect + GnuTLS deps -->
+      <Component Id="LibOpenConnect" Guid="*">
+        <File Id="LibOpenConnectFile" Name="libopenconnect-5.dll"
+              Source="$(var.OcDepsDir)\libopenconnect-5.dll" KeyPath="yes" />
+        <File Id="LibGnutls"   Name="libgnutls-30.dll"  Source="$(var.OcDepsDir)\libgnutls-30.dll"  />
+        <File Id="LibNettle"   Name="libnettle-6.dll"   Source="$(var.OcDepsDir)\libnettle-6.dll"   />
+        <File Id="LibHogweed"  Name="libhogweed-4.dll"  Source="$(var.OcDepsDir)\libhogweed-4.dll"  />
+        <File Id="LibGmp"      Name="libgmp-10.dll"     Source="$(var.OcDepsDir)\libgmp-10.dll"     />
+        <File Id="LibXml2"     Name="libxml2-2.dll"     Source="$(var.OcDepsDir)\libxml2-2.dll"    />
+        <File Id="LibP11kit"   Name="libp11-kit-0.dll"  Source="$(var.OcDepsDir)\libp11-kit-0.dll"  />
+        <File Id="LibIconv"    Name="libiconv-2.dll"    Source="$(var.OcDepsDir)\libiconv-2.dll"    />
+        <File Id="LibIdn2"     Name="libidn2-4.dll"     Source="$(var.OcDepsDir)\libidn2-4.dll"     />
+        <File Id="LibIntl"     Name="libintl-8.dll"     Source="$(var.OcDepsDir)\libintl-8.dll"     />
+        <File Id="LibTasn1"    Name="libtasn1-6.dll"    Source="$(var.OcDepsDir)\libtasn1-6.dll"    />
+        <File Id="LibUnistr"   Name="libunistring-2.dll" Source="$(var.OcDepsDir)\libunistring-2.dll" />
+        <File Id="LibLzma"     Name="liblzma-5.dll"     Source="$(var.OcDepsDir)\liblzma-5.dll"     />
+        <File Id="LibFfi"      Name="libffi-6.dll"      Source="$(var.OcDepsDir)\libffi-6.dll"      />
+        <File Id="LibZ"        Name="zlib1.dll"         Source="$(var.OcDepsDir)\zlib1.dll"         />
+        <File Id="LibWinPth"   Name="libwinpthread-1.dll" Source="$(var.OcDepsDir)\libwinpthread-1.dll" />
+        <File Id="LibStdCpp"   Name="libstdc++-6.dll"   Source="$(var.OcDepsDir)\libstdc++-6.dll"   />
+        <File Id="LibGccSeh"   Name="libgcc_s_seh-1.dll" Source="$(var.OcDepsDir)\libgcc_s_seh-1.dll" />
+      </Component>
+    </DirectoryRef>
+
+    <!-- Custom action: create local group + add current user to it.
+         Runs deferred (elevated). Done with native NetLocalGroupAdd
+         / NetLocalGroupAddMembers, packed into installer_helper.dll
+         that ships with this MSI. For simplicity in this skeleton we
+         shell out to `net localgroup`. -->
+    <Property Id="ADDTOGROUP_CMD"
+              Value='cmd.exe /c "net localgroup KeeneticVPNUsers /add 2>nul &amp; net localgroup KeeneticVPNUsers %USERNAME% /add 2>nul"' />
+    <CustomAction Id="AddCurrentUserToGroup"
+                  Property="ADDTOGROUP_CMD"
+                  ExeCommand=""
+                  Execute="deferred" Return="ignore" Impersonate="no" />
+    <CustomAction Id="RemoveGroup"
+                  ExeCommand='cmd.exe /c "net localgroup KeeneticVPNUsers /delete 2>nul"'
+                  Execute="deferred" Return="ignore" Impersonate="no" />
+
+    <Feature Id="Complete" Title="Keenetic anti-DPI VPN" Level="1">
+      <ComponentRef Id="GuiExe" />
+      <ComponentRef Id="ServiceExe" />
+      <ComponentRef Id="WintunDll" />
+      <ComponentRef Id="CaBundle" />
+      <ComponentRef Id="LibOpenConnect" />
+    </Feature>
+
+    <InstallExecuteSequence>
+      <Custom Action="AddCurrentUserToGroup" After="InstallServices">NOT REMOVE</Custom>
+      <Custom Action="RemoveGroup"           Before="RemoveExistingProducts">REMOVE="ALL"</Custom>
+    </InstallExecuteSequence>
+
+    <UIRef Id="WixUI_InstallDir" />
+  </Product>
+</Wix>

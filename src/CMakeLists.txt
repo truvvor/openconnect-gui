@@ -30,6 +30,8 @@ set(${PROJECT_NAME}_SRCS
 
     vpninfo.cpp
 
+    wintun_client.cpp
+
     logger.cpp
 
     FileLogger.cpp

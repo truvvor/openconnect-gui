@@ -1,137 +1,80 @@
 /*
  * Copyright (C) 2014 Red Hat
+ * Copyright (C) 2026 Keenetic anti-DPI VPN client (fork)
+ * GPLv2 — see LICENSE.txt
  *
- * This file is part of openconnect-gui.
+ * Compact main window for Keenetic camouflage VPN client.
  *
- * openconnect-gui is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * Differences from upstream:
+ *   - Tray icon with Connect / Disconnect / Show / Quit (Q4 locked)
+ *   - File menu: Import camouflage config / Export camouflage config /
+ *                Edit camouflage config (system editor)
+ *   - Connection menu: toggle "Compatibility mode" (camouflage OFF for
+ *                       active profile, sets tunnel URL to /CSCOSSLC/tunnel)
+ *   - Auto-reconnect default 30s, up to 10 attempts (Q5 locked)
+ *   - No cert/key/PKCS#11 UI; no TOFU pinning dialog
  */
 
 #pragma once
 
-#include "common.h"
-
-#include <QCoreApplication>
-#include <QFutureWatcher>
 #include <QMainWindow>
-#include <QMenu>
-#include <QMutex>
 #include <QSystemTrayIcon>
-#include <QTimer>
+#include <QFutureWatcher>
 
-#ifndef _WIN32
-#include <cerrno>
-#include <sys/socket.h>
-#include <sys/types.h>
-#else
-#include <winsock2.h>
-#endif
-
-extern "C" {
-#include <openconnect.h>
-}
-
-class LogDialog;
-class QStateMachine;
+class VpnInfo;
+struct oc_stats;
 
 namespace Ui {
 class MainWindow;
 }
-enum status_t {
-    STATUS_DISCONNECTING,
-    STATUS_DISCONNECTED,
-    STATUS_CONNECTING,
-    STATUS_CONNECTED
-};
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget* parent = 0, const QString profileName = {});
+    MainWindow(QWidget* parent = nullptr, const QString& autoProfile = QString());
     ~MainWindow();
 
-    void updateStats(const struct oc_stats* stats, QString dtls);
-    void reload_settings();
-
-    void vpn_status_changed(int connected);
-    void vpn_status_changed(int connected,
-        QString& dns,
-        QString& ip,
-        QString& ip6,
-        QString& cstp_cipher,
-        QString& dtls_cipher);
+    void updateStats(const struct oc_stats* stats, const QString& cstpCipher);
 
 public slots:
-    void iconActivated(QSystemTrayIcon::ActivationReason reason);
-    void statsChanged(QString, QString, QString);
-    void changeStatus(int);
-
-    void blink_ui(void);
-
-    void request_update_stats();
-
     void on_connectClicked();
     void on_disconnectClicked();
+    void on_editClicked();
+    void on_newClicked();
+    void on_deleteClicked();
+    void on_importCamouflageConfig();
+    void on_exportCamouflageConfig();
+    void on_editCamouflageConfigInEditor();
+    void on_toggleCompatibilityMode(bool legacy);
+    void on_about();
+    void on_quit();
 
+protected:
     void closeEvent(QCloseEvent* event) override;
-
-    void on_actionAbout_triggered();
-    void on_actionAboutQt_triggered();
-
-    void on_actionNewProfile_triggered();
-    void on_actionNewProfileAdvanced_triggered();
-    void on_actionEditSelectedProfile_triggered();
-    void on_actionRemoveSelectedProfile_triggered();
-
-    void on_actionWebSite_triggered();
-
-signals:
-    void stats_changed_sig(QString, QString, QString);
-    void vpn_status_changed_sig(int);
-    void timeout(void);
-    void readyToShutdown();
+    void changeEvent(QEvent* event) override;
 
 private slots:
-    void createLogDialog();
+    void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
+    void onWorkerFinished();
 
 private:
-    static QString normalize_byte_size(uint64_t bytes);
-    void createTrayIcon();
+    void refreshProfiles(const QString& selectAfter = QString());
+    void updateStatus(const QString& text, bool connected);
+    void buildTray();
+    void buildMenus();
+    bool ensureWintunServiceRunning();
+    QString camouflageConfigDir() const;
+    QString camouflageConfigForProfile(const QString& profile) const;
 
-    void readSettings();
-    void writeSettings();
-
-    /* we keep the fd instead of a pointer to vpninfo to avoid
-     * any multithread issues */
-    SOCKET cmd_fd;
-    bool minimize_on_connect;
     Ui::MainWindow* ui;
-    QTimer* timer;
-    QTimer* blink_timer;
-    QFutureWatcher<void> futureWatcher; // watches the vpninfo
+    QSystemTrayIcon* m_tray { nullptr };
+    QMenu* m_trayMenu { nullptr };
+    QAction* m_actConnect { nullptr };
+    QAction* m_actDisconnect { nullptr };
+    QAction* m_actCompatibility { nullptr };
 
-    QString dns;
-    QString ip;
-    QString ip6;
-    QString cstp_cipher;
-    QString dtls_cipher;
-
-    QStateMachine* m_appWindowStateMachine;
-    QSystemTrayIcon* m_trayIcon;
-    QMenu* m_trayIconMenu;
-    QMenu* m_trayIconMenuConnections;
-    QAction* m_disconnectAction;
-    QAction* m_minimizeAction;
-    QAction* m_restoreAction;
-    QAction* m_quitAction;
+    VpnInfo* m_vpn { nullptr };
+    QFutureWatcher<int>* m_worker { nullptr };
+    int m_reconnectAttempts { 0 };
+    bool m_userInitiatedDisconnect { false };
 };
