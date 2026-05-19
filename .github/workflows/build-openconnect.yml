@@ -147,31 +147,48 @@ jobs:
           STAGE_RT=$RUNNER_TEMP/stage-runtime
           STAGE_DEV=$RUNNER_TEMP/stage-devel
           mkdir -p "$STAGE_RT" "$STAGE_DEV/include" "$STAGE_DEV/lib"
-          # 1) main artifacts
+          # 1) primary artifacts
           cp oc/.libs/libopenconnect-5.dll "$STAGE_RT/"
           cp oc/.libs/openconnect.exe       "$STAGE_RT/"
           cp oc/vpnc-script-win.js          "$STAGE_RT/"
           cp oc/openconnect.h               "$STAGE_DEV/include/"
           cp oc/.libs/libopenconnect.dll.a  "$STAGE_DEV/lib/"
-          # 2) walk DLL deps via objdump and copy from MINGW bin
           MINGW_BIN=${{ matrix.mingw_prefix }}/bin
-          declare -A SEEN
-          queue=("$STAGE_RT/openconnect.exe" "$STAGE_RT/libopenconnect-5.dll")
-          while [ ${#queue[@]} -gt 0 ]; do
-            f="${queue[0]}"; queue=("${queue[@]:1}")
-            for dep in $(${{ matrix.host_triple }}-objdump -p "$f" 2>/dev/null | awk '/DLL Name:/ {print $3}'); do
-              # only copy DLLs that live in MINGW_BIN
-              if [ -f "$MINGW_BIN/$dep" ] && [ -z "${SEEN[$dep]:-}" ]; then
-                SEEN[$dep]=1
-                cp "$MINGW_BIN/$dep" "$STAGE_RT/"
-                queue+=("$STAGE_RT/$dep")
-              fi
+          MINGW_LIB=${{ matrix.mingw_prefix }}/lib
+          # 2) explicit DLL dep list — openconnect/gnutls/libxml2 + transitives + MinGW runtime
+          DLL_GLOBS=(
+            libopenconnect-5
+            libgnutls-30 libgnutls-openssl-* libgnutlsxx-*
+            libgmp-* libhogweed-* libnettle-*
+            libp11-kit-* libtasn1-*
+            libxml2-* libxml-*
+            libstoken-*
+            libidn2-* libunistring-*
+            libffi-* zlib1 libz-*
+            liblz4* liblzma-*
+            libiconv-* libintl-* libcharset-*
+            libpsl-* libbrotlicommon* libbrotlidec*
+            libwinpthread-* libgcc_s_* libstdc++-* libssp-*
+            libcrypt-* libgmpxx-* libssh*
+            libsystre-* libtre-*
+          )
+          for g in "${DLL_GLOBS[@]}"; do
+            for f in "$MINGW_BIN"/${g}.dll; do
+              [ -f "$f" ] && cp -v "$f" "$STAGE_RT/" || true
             done
           done
-          # 3) provide common import-libs in devel zip for downstream linking
-          for libname in libgnutls libgmp libhogweed libnettle libp11-kit libstoken libxml2; do
-            for f in ${{ matrix.mingw_prefix }}/lib/${libname}.dll.a; do
-              [ -f "$f" ] && cp "$f" "$STAGE_DEV/lib/"
+          # 3) devel: copy all common import-libs (.dll.a) for downstream linking
+          LIB_GLOBS=(
+            libopenconnect libgnutls libgnutls-openssl libgnutlsxx
+            libgmp libhogweed libnettle libp11-kit libtasn1
+            libxml2 libxml libstoken
+            libidn2 libunistring libffi libz zlib
+            liblz4 liblzma libiconv libintl libcharset libpsl
+            libwinpthread libssp
+          )
+          for g in "${LIB_GLOBS[@]}"; do
+            for f in "$MINGW_LIB"/${g}.dll.a "$MINGW_LIB"/${g}.a; do
+              [ -f "$f" ] && cp -v "$f" "$STAGE_DEV/lib/" || true
             done
           done
           echo "=== runtime zip contents ==="
