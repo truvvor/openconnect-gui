@@ -169,24 +169,12 @@ jobs:
           done
           MINGW_BIN=${{ matrix.mingw_prefix }}/bin
           MINGW_LIB=${{ matrix.mingw_prefix }}/lib
-          # 2) explicit DLL dep list — openconnect/gnutls/libxml2 + transitives + MinGW runtime
-          DLL_GLOBS=(
-            libopenconnect-5
-            libgnutls-30 libgnutls-openssl-* libgnutlsxx-*
-            libgmp-* libhogweed-* libnettle-*
-            libp11-kit-* libtasn1-*
-            libxml2-* libxml-*
-            libstoken-*
-            libidn2-* libunistring-*
-            libffi-* zlib1 libz-*
-            liblz4* liblzma-*
-            libiconv-* libintl-* libcharset-*
-            libpsl-* libbrotlicommon* libbrotlidec*
-            libwinpthread-* libgcc_s_* libstdc++-* libssp-*
-            libcrypt-* libgmpxx-* libssh*
-            libsystre-* libtre-*
-          )
-          for g in "${DLL_GLOBS[@]}"; do
+          # 2) Copy all *.dll from MinGW bin — covers gnutls + all transitive deps
+          # without us having to maintain an explicit blocklist. Resulting zip is
+          # ~50-60MB but guarantees fixup_bundle finds every prereq.
+          cp -v "$MINGW_BIN"/*.dll "$STAGE_RT/" 2>/dev/null || true
+          # also pick a few useful Qt-style DLLs if present (no-op if absent)
+          for g in zlib1 libsharpyuv* libwebp*; do
             for f in "$MINGW_BIN"/${g}.dll; do
               [ -f "$f" ] && cp -v "$f" "$STAGE_RT/" || true
             done
