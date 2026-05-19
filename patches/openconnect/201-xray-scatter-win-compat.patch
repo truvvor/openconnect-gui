@@ -1,0 +1,31 @@
+Make 200-xray-scatter.patch Windows-portable:
+  - Replace POSIX <netinet/tcp.h> with Windows-aware include
+  - Silence "compute_cstp_magic defined but not used" warning (the
+    function is reserved for future per-magic-byte encapsulation)
+
+--- a/gnutls.c
++++ b/gnutls.c
+@@ -18,7 +18,11 @@
+ #include <config.h>
+ 
+ #include "openconnect-internal.h"
+-#include <netinet/tcp.h>
++#ifdef _WIN32
++#include <ws2tcpip.h>
++#else
++#include <netinet/tcp.h>
++#endif
+ #include <gnutls/crypto.h>
+ 
+ #include "gnutls.h"
+--- a/cstp.c
++++ b/cstp.c
+@@ -51,7 +51,7 @@
+ }
+ 
+ /* Derive CSTP magic bytes from camouflage secret */
+-static void compute_cstp_magic(struct openconnect_info *vpninfo, char *magic)
++static void __attribute__((unused)) compute_cstp_magic(struct openconnect_info *vpninfo, char *magic)
+ {
+ 	if (vpninfo->camouflage_secret) {
+ 		uint8_t hmac[32];
