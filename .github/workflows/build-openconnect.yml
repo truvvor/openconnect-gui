@@ -104,9 +104,11 @@ jobs:
         run: |
           set -eux
           cd "$RUNNER_TEMP/oc"
-          wget -q https://www.wintun.net/builds/wintun-0.14.1.zip -O /tmp/wintun.zip
-          python -c "import zipfile,os; zipfile.ZipFile('/tmp/wintun.zip').extractall('/tmp/wintun-pkg')"
-          cp /tmp/wintun-pkg/wintun/include/wintun.h ./wintun.h
+          wget -q https://www.wintun.net/builds/wintun-0.14.1.zip -O "$RUNNER_TEMP/wintun.zip"
+          mkdir -p "$RUNNER_TEMP/wintun-pkg"
+          # bsdtar ships with MSYS2 base-devel and reads zip
+          bsdtar -xf "$RUNNER_TEMP/wintun.zip" -C "$RUNNER_TEMP/wintun-pkg"
+          cp "$RUNNER_TEMP/wintun-pkg/wintun/include/wintun.h" ./wintun.h
           ls -la wintun.h
 
       - name: Download vpnc-script-win.js
