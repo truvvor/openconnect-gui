@@ -131,7 +131,7 @@ jobs:
             --with-gnutls \
             --enable-shared --disable-static \
             --with-default-vpncscript=vpnc-script-win.js \
-            CFLAGS="-O2 -pipe -Wno-error"
+            CFLAGS="-O2 -pipe -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types -Wno-error=int-conversion -Wno-int-conversion -Wno-error=implicit-function-declaration -Wno-error"
 
       - name: Build
         run: |
