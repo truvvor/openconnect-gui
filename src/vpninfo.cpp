@@ -27,7 +27,9 @@
 #include "logger.h"
 #include "server_storage.h"
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 
 #include <cstdarg>
 #include <cstdio>
@@ -422,6 +424,26 @@ VpnInfo::VpnInfo(QString name, StoredServer* ss, MainWindow* m)
 
     openconnect_set_protocol(vpninfo, ss->get_protocol_name());
 
+    /* Anti-DPI camouflage: only meaningful if the linked libopenconnect carries
+     * 5.10+ symbols (our patched 9.12 build). On a stock libopenconnect this
+     * symbol is absent and the GCC/MinGW linker would refuse the whole binary
+     * — so we ifdef on a feature macro we drop in via -DOC_HAVE_CAMOUFLAGE_API
+     * at CMake time (see ProjectDependencies.cmake). */
+#ifdef OC_HAVE_CAMOUFLAGE_API
+    if (!ss->get_camouflage_secret().isEmpty()) {
+        QByteArray secret = ss->get_camouflage_secret().toUtf8();
+        openconnect_set_camouflage_secret(vpninfo, secret.constData());
+        Logger::instance().addMessage(QObject::tr("Anti-DPI camouflage: enabled"));
+    }
+#endif
+
+    /* --no-dtls: applied via openconnect_disable_dtls (since libopenconnect 5.7).
+     * disable_udp covers both the explicit checkbox and the auto-toggle from the
+     * camouflage block in EditDialog. */
+    if (ss->get_disable_udp()) {
+        openconnect_disable_dtls(vpninfo);
+    }
+
     openconnect_set_setup_tun_handler(vpninfo, setup_tun_vfn);
 }
 
@@ -462,6 +484,17 @@ int VpnInfo::connect()
     if (ca_file.isEmpty() != true) {
         openconnect_set_system_trust(vpninfo, 0);
         openconnect_set_cafile(vpninfo, ca_file.toLatin1().data());
+    } else {
+        /* No per-profile CA: when camouflage is on, the server will be presented
+         * by a leaf cert that the standard Win cert store may not trust (SNI is
+         * faked), so we fall back to a bundled Let's Encrypt CA file shipped in
+         * the installer. Falls through to the Win system store if the bundle
+         * file is missing. */
+        QString bundle = QCoreApplication::applicationDirPath() + "/ca-certificates.crt";
+        if (QFile::exists(bundle)) {
+            openconnect_set_cafile(vpninfo, bundle.toLatin1().data());
+            Logger::instance().addMessage(QObject::tr("Using bundled CA: %1").arg(bundle));
+        }
     }
 
 #ifdef Q_OS_WIN32

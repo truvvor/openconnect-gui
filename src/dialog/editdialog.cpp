@@ -148,6 +148,12 @@ EditDialog::EditDialog(QString server, QWidget* parent)
     ui->reconnectTimeoutSpinBox->setValue(ss->get_reconnect_timeout());
     ui->dtlsAttemptPeriodSpinBox->setValue(ss->get_dtls_reconnect_timeout());
 
+    // Anti-DPI camouflage block
+    ui->camouflageSecretEdit->setText(ss->get_camouflage_secret());
+    // Force-TCP toggle starts checked iff secret is non-empty (sensible default for
+    // anyone configuring camouflage; user can still uncheck).
+    ui->camouflageForceTcpBox->setChecked(!ss->get_camouflage_secret().isEmpty());
+
     // Load the windows certificates
     load_win_certs();
 
@@ -240,7 +246,15 @@ void EditDialog::on_buttonBox_accepted()
     ss->set_batch_mode(ui->batchModeBox->isChecked());
     ss->set_minimize(ui->minimizeBox->isChecked());
     ss->set_proxy(ui->useProxyBox->isChecked());
-    ss->set_disable_udp(ui->disableUdpBox->isChecked());
+    /* Anti-DPI: camouflage secret. Force-TCP overrides the explicit Disable UDP box
+     * since DTLS is trivially fingerprinted by DPI when camouflage is active. */
+    QString camo = ui->camouflageSecretEdit->text().trimmed();
+    ss->set_camouflage_secret(camo);
+    bool disable_udp = ui->disableUdpBox->isChecked();
+    if (!camo.isEmpty() && ui->camouflageForceTcpBox->isChecked()) {
+        disable_udp = true;
+    }
+    ss->set_disable_udp(disable_udp);
     ss->set_reconnect_timeout(ui->reconnectTimeoutSpinBox->value());
     ss->set_dtls_reconnect_timeout(ui->dtlsAttemptPeriodSpinBox->value());
 

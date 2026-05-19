@@ -1,0 +1,73 @@
+Public libopenconnect API to set the camouflage secret programmatically.
+Adds:
+  - int  openconnect_set_camouflage_secret(struct openconnect_info *, const char *);
+  - const char *openconnect_get_camouflage_secret(struct openconnect_info *);
+
+Bumps API minor (5.9 -> 5.10) and exports both symbols in a new
+OPENCONNECT_5_10 ABI tag in libopenconnect.map.in.
+
+This obsoletes the env-var fallback added in 110-env-camouflage-secret.patch
+for GUI use (the env hook is still useful for one-shot CLI scripts).
+
+--- a/openconnect.h
++++ b/openconnect.h
+@@ -35,9 +35,12 @@
+ #endif
+ 
+ #define OPENCONNECT_API_VERSION_MAJOR 5
+-#define OPENCONNECT_API_VERSION_MINOR 9
++#define OPENCONNECT_API_VERSION_MINOR 10
+ 
+ /*
++ * API version 5.10 (camouflage; 2026-05-19):
++ *  - Add openconnect_set_camouflage_secret(), openconnect_get_camouflage_secret()
++ *
+  * API version 5.9 (v9.12; 2023-05-20):
+  *  - Add openconnect_set_sni()
+  *
+@@ -617,6 +620,9 @@
+ 
+ int openconnect_set_cafile(struct openconnect_info *, const char *);
+ 
++int openconnect_set_camouflage_secret(struct openconnect_info *vpninfo, const char *secret);
++const char *openconnect_get_camouflage_secret(struct openconnect_info *vpninfo);
++
+ /* call this function to disable the system trust from being used to
+  * verify the server certificate. @val is a boolean value.
+  *
+--- a/library.c
++++ b/library.c
+@@ -940,6 +940,18 @@
+ 	return 0;
+ }
+ 
++int openconnect_set_camouflage_secret(struct openconnect_info *vpninfo, const char *secret)
++{
++	UTF8CHECK(secret);
++	STRDUP(vpninfo->camouflage_secret, secret);
++	return 0;
++}
++
++const char *openconnect_get_camouflage_secret(struct openconnect_info *vpninfo)
++{
++	return vpninfo->camouflage_secret;
++}
++
+ int openconnect_set_cafile(struct openconnect_info *vpninfo, const char *cafile)
+ {
+ 	UTF8CHECK(cafile);
+--- a/libopenconnect.map.in
++++ b/libopenconnect.map.in
+@@ -148,6 +148,12 @@
+ 	openconnect_set_sni;
+ } OPENCONNECT_5_8;
+ 
++OPENCONNECT_5_10 {
++ global:
++	openconnect_set_camouflage_secret;
++	openconnect_get_camouflage_secret;
++} OPENCONNECT_5_9;
++
+ OPENCONNECT_PRIVATE {
+  global: @SYMVER_TIME@ @SYMVER_GETLINE@ @SYMVER_JAVA@ @SYMVER_ASPRINTF@ @SYMVER_VASPRINTF@ @SYMVER_WIN32_STRERROR@ @SYMVER_WIN32_SETENV@
+ 	openconnect_get_tls_library_version;

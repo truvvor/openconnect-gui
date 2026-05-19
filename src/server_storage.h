@@ -47,6 +47,12 @@ public:
     bool get_disable_udp() const;
     void set_disable_udp(bool v);
 
+    /* Anti-DPI camouflage (Level 2): activates camouflaged wire protocol
+     * in libopenconnect 5.10+ when non-empty. Persisted encrypted. */
+    const QString& get_camouflage_secret() const;
+    void set_camouflage_secret(const QString& secret);
+    void clear_camouflage_secret();
+
     QString get_cert_file();
     QString get_key_file();
     QString get_key_url() const;
@@ -122,6 +128,7 @@ private:
     QString m_protocol_name;
     QByteArray m_server_hash;
     unsigned m_server_hash_algo;
+    QString m_camouflage_secret;
     Cert m_ca_cert;
     KeyPair m_client;
 };

@@ -165,6 +165,21 @@ int StoredServer::load(QString& name)
     this->m_reconnect_timeout = settings.value("reconnect-timeout", 300).toInt();
     this->m_dtls_attempt_period = settings.value("dtls_attempt_period", 25).toInt();
 
+    /* Anti-DPI: decrypt camouflage secret (stored with same scheme as password). */
+    {
+        QString camo;
+        QByteArray enc = settings.value("camouflage-secret").toByteArray();
+        if (enc.isEmpty() == false) {
+            if (CryptData::decode(this->m_servername, enc, camo) == true) {
+                this->m_camouflage_secret = camo;
+            } else {
+                m_last_err = "decoding of camouflage secret failed";
+            }
+        } else {
+            this->m_camouflage_secret.clear();
+        }
+    }
+
     bool ret = false;
     int rval = 0;
 
@@ -267,8 +282,31 @@ int StoredServer::save()
     settings.setValue("protocol-id", m_protocol_id);
     settings.setValue("protocol-name", m_protocol_name);
 
+    /* Anti-DPI: encrypt camouflage secret before persisting. */
+    if (this->m_camouflage_secret.isEmpty() == false) {
+        settings.setValue("camouflage-secret",
+            CryptData::encode(this->m_servername, this->m_camouflage_secret));
+    } else {
+        settings.remove("camouflage-secret");
+    }
+
     settings.endGroup();
     return 0;
+}
+
+const QString& StoredServer::get_camouflage_secret() const
+{
+    return this->m_camouflage_secret;
+}
+
+void StoredServer::set_camouflage_secret(const QString& secret)
+{
+    this->m_camouflage_secret = secret;
+}
+
+void StoredServer::clear_camouflage_secret()
+{
+    this->m_camouflage_secret.clear();
 }
 
 const QString& StoredServer::get_username() const

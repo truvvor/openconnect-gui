@@ -164,6 +164,18 @@ install(TARGETS ${PROJECT_NAME}
     LIBRARY DESTINATION . COMPONENT App
 )
 
+# Anti-DPI: ship the Let's Encrypt-only CA bundle (R10..R14 + E5..E9 + ISRG roots)
+# alongside the binary. When a profile has no per-server CA file, vpninfo.cpp
+# falls back to this bundle so leaf certs from camouflage-SNI'ed nginx still
+# verify after a 90-day LE rotation.
+if(EXISTS ${CMAKE_SOURCE_DIR}/patches/ca-bundle/ca-certificates.crt)
+    install(FILES
+        ${CMAKE_SOURCE_DIR}/patches/ca-bundle/ca-certificates.crt
+        DESTINATION .
+        COMPONENT App
+    )
+endif()
+
 # fixup the bundle
 get_target_property(QT_LIBRARY_DIR Qt5::Core LOCATION)
 get_filename_component(QT_LIBRARY_DIR ${QT_LIBRARY_DIR} PATH)

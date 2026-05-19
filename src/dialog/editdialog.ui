@@ -559,6 +559,52 @@ The default timeout is 300 seconds, which means that openconnect can recover VPN
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="camouflageGroupBox">
+     <property name="title">
+      <string>Anti-DPI Camouflage (Level 2)</string>
+     </property>
+     <property name="toolTip">
+      <string>Enables the camouflaged wire protocol against DPI for patched ocserv 9.12+ servers.
+When the secret is set: the tunnel URL changes to /api/v1/session, the X-CSTP-/X-DTLS- headers are renamed to X-S-/X-D-, the session cookie is renamed, CSTP magic bytes are derived from the HMAC of the secret, and the TLS ClientHello is fragmented (Xray-compatible TCP scatter).</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_camouflage">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::ExpandingFieldsGrow</enum>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="camouflageSecretLabel">
+        <property name="text">
+         <string>Camouflage secret:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="camouflageSecretEdit">
+        <property name="echoMode">
+         <enum>QLineEdit::Password</enum>
+        </property>
+        <property name="placeholderText">
+         <string>Leave empty to disable camouflage</string>
+        </property>
+        <property name="toolTip">
+         <string>Pre-shared secret. Must match the camouflage-secret on the ocserv server (e.g. /etc/keenetic-defaults/ocserv-override.conf on Keenetic routers).</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QCheckBox" name="camouflageForceTcpBox">
+        <property name="text">
+         <string>Force TCP only (recommended with camouflage — UDP DTLS is trivially fingerprinted)</string>
+        </property>
+        <property name="toolTip">
+         <string>When set, this overrides "Disable UDP" above. Recommended whenever the camouflage secret is set, otherwise DPI can detect VPN by the DTLS UDP stream.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
@@ -593,6 +639,8 @@ The default timeout is 300 seconds, which means that openconnect can recover VPN
   <tabstop>batchModeBox</tabstop>
   <tabstop>disableUdpBox</tabstop>
   <tabstop>useProxyBox</tabstop>
+  <tabstop>camouflageSecretEdit</tabstop>
+  <tabstop>camouflageForceTcpBox</tabstop>
   <tabstop>loadWinCertList</tabstop>
   <tabstop>loadWinCert</tabstop>
  </tabstops>

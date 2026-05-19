@@ -57,3 +57,12 @@ endif()
 
 # mingw32/mingw64 and other external dependencies
 include(ProjectExternals)
+
+# Anti-DPI camouflage API (libopenconnect 5.10+, our patched 9.12 build).
+# We always link against the camouflage zip in CI, so unconditionally define
+# this. If you swap the openconnect package for a stock build, drop this define
+# (and the corresponding code paths in src/vpninfo.cpp will compile out).
+if(OC_USING_CAMOUFLAGE)
+    add_compile_definitions(OC_HAVE_CAMOUFLAGE_API=1)
+    message(STATUS "openconnect: camouflage API enabled (OC_HAVE_CAMOUFLAGE_API)")
+endif()
