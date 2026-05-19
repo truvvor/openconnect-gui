@@ -216,15 +216,15 @@ Net code-size reduction: ~40 % LOC.
 - `keenetic-camouflage`    — our work happens here; PRs target this branch
 - `release-1.0`            — tagged release branches as we ship
 
-## Open architectural questions (to be answered before each phase)
+## Architectural decisions (locked 2026-05-19)
 
-| # | Question | When to answer |
+| # | Decision | Status |
 |---|---|---|
-| Q1 | Qt 5.15 or Qt 6.x? Default Qt 5.15 (compat with current code). | Before any GUI changes |
-| Q2 | MinGW-w64 or MSVC for the service? Default MinGW-w64 (one toolchain everywhere). | Phase 3 |
-| Q3 | Sign with which cert? Self-signed for now (registered as trusted by installer); EV cert later. | Phase 4 |
-| Q4 | Do we want a tray icon with quick-connect, or just classic window? Default tray + window. | Phase 2 |
-| Q5 | Auto-reconnect on token expiry / DPD timeout? Default yes (mirrors keenetic-ci wrapper.c periodic refresh). | Phase 2 |
+| Q1 | **Qt 5.15 LTS** | locked |
+| Q2 | **MinGW-w64** everywhere — GUI, service, libopenconnect.dll (one toolchain end-to-end) | locked |
+| Q3 | **Self-signed cert for dev**; production CI signs via `signtool` when env-vars `KEENETIC_SIGN_PFX` + `KEENETIC_SIGN_PASS` are set (EV cert path) | locked |
+| Q4 | **Tray icon + main window** — QSystemTrayIcon with Connect / Disconnect / Status / Quit menu; close-window minimises to tray | locked |
+| Q5 | **Auto-reconnect ON by default** — 30 s interval, up to 10 attempts, then red Disconnected state. Mirrors `patches/ocserv-files/ocserv-wrapper.c` v14 background-refresh philosophy. | locked |
 
 ## Phases
 
