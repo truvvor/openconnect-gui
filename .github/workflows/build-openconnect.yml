@@ -100,6 +100,15 @@ jobs:
             patch -p1 < "$p"
           done
 
+      - name: Fetch wintun.h header
+        run: |
+          set -eux
+          cd "$RUNNER_TEMP/oc"
+          wget -q https://www.wintun.net/builds/wintun-0.14.1.zip -O /tmp/wintun.zip
+          unzip -o /tmp/wintun.zip -d /tmp/wintun-pkg > /dev/null
+          cp /tmp/wintun-pkg/wintun/include/wintun.h ./wintun.h
+          ls -la wintun.h
+
       - name: Download vpnc-script-win.js
         run: |
           set -eux
