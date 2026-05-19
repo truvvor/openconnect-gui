@@ -111,7 +111,7 @@ jobs:
         run: |
           set -eux
           cd "$RUNNER_TEMP/oc"
-          ./autogen.sh
+          ls -la configure 2>/dev/null || (test -x ./autogen.sh && ./autogen.sh)
           ./configure \
             --host=${{ matrix.host_triple }} \
             --prefix=${{ matrix.mingw_prefix }} \
@@ -120,7 +120,7 @@ jobs:
             --with-gnutls \
             --enable-shared --disable-static \
             --with-default-vpncscript=vpnc-script-win.js \
-            CFLAGS="-O2 -pipe"
+            CFLAGS="-O2 -pipe -Wno-error"
 
       - name: Build
         run: |
