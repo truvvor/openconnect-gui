@@ -191,12 +191,17 @@ int StoredServer::load(QString& name)
 
     if (this->m_batch_mode == true) {
         this->m_groupname = settings.value("groupname").toString();
-        ret = CryptData::decode(this->m_servername,
-            settings.value("password").toByteArray(),
-            this->m_password);
-        if (ret == false) {
-            m_last_err = "decoding of password failed";
-            rval = -1;
+    }
+    /* Password is persisted independently of batch mode: a value typed into the
+     * editor's Password field is saved on its own. Decode whenever present. */
+    {
+        QByteArray encPw = settings.value("password").toByteArray();
+        if (encPw.isEmpty() == false) {
+            ret = CryptData::decode(this->m_servername, encPw, this->m_password);
+            if (ret == false) {
+                m_last_err = "decoding of password failed";
+                rval = -1;
+            }
         }
     }
 
@@ -264,9 +269,15 @@ int StoredServer::save()
     settings.setValue("username", this->m_username);
 
     if (this->m_batch_mode == true) {
+        settings.setValue("groupname", this->m_groupname);
+    }
+    /* Persist the password whenever one is set (typed in the editor field, or
+     * remembered from a connect prompt); otherwise remove any stale value. */
+    if (this->m_password.isEmpty() == false) {
         settings.setValue("password",
             CryptData::encode(this->m_servername, this->m_password));
-        settings.setValue("groupname", this->m_groupname);
+    } else {
+        settings.remove("password");
     }
 
     QByteArray data;

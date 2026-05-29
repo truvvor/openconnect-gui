@@ -1100,7 +1100,12 @@ void MainWindow::onSvcPersist(const QString& what, const QJsonObject& body)
     const QString value = body.value("value").toString();
     bool changed = true;
     if (what == QLatin1String("username")) ss.set_username(value);
-    else if (what == QLatin1String("password")) ss.set_password(value);
+    else if (what == QLatin1String("password")) {
+        /* remember a password entered at the connect prompt only if the profile
+         * opted in via "Save password"; a field-typed password saves on its own. */
+        if (ss.get_batch_mode()) ss.set_password(value);
+        else changed = false;
+    }
     else if (what == QLatin1String("groupname")) ss.set_groupname(value);
     else if (what == QLatin1String("token")) ss.set_token_str(value);
     else changed = false;
