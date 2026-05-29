@@ -17,6 +17,18 @@ add_executable(${SERVICE_TARGET}
     ipcsession.h
     servicelog.cpp
     servicelog.h
+    ../engine/vpnengine.cpp
+    ../engine/vpnengine.h
+    ../engine/enginehost.h
+)
+
+# libopenconnect (in-process VPN engine) — same external camouflage build the GUI uses
+add_dependencies(${SERVICE_TARGET}
+    openconnect-devel-${openconnect-TAG}
+    openconnect-${openconnect-TAG}
+)
+target_include_directories(${SERVICE_TARGET} PRIVATE
+    ${CMAKE_BINARY_DIR}/external/include
 )
 
 target_link_libraries(${SERVICE_TARGET}
@@ -24,6 +36,17 @@ target_link_libraries(${SERVICE_TARGET}
     Qt5::Core
     Qt5::Network
     advapi32
+    wsock32
+
+    # in-process libopenconnect engine
+    openconnect::openconnect
+    openconnect::gnutls
+    openconnect::gmp
+    openconnect::hogweed
+    openconnect::nettle
+    openconnect::p11-kit
+    openconnect::stoken
+    openconnect::xml2
 )
 
 set_target_properties(${SERVICE_TARGET} PROPERTIES
