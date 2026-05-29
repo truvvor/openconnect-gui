@@ -28,6 +28,15 @@
 #include "ui_mainwindow.h"
 #include "vpninfo.h"
 
+#include "serviceclient.h"
+#include "ipc/profile.h"
+#include "MyCertMsgBox.h"
+#include "MyInputDialog.h"
+#include "MyMsgBox.h"
+#include <QFile>
+#include <QJsonArray>
+#include <QLineEdit>
+
 #include "logger.h"
 
 extern "C" {
@@ -75,6 +84,20 @@ MainWindow::MainWindow(QWidget* parent, const QString profileName)
     timer = new QTimer(this);
     blink_timer = new QTimer(this);
     this->cmd_fd = INVALID_SOCKET;
+
+    /* privilege separation: all VPN work is delegated to the LocalSystem
+     * service over the named pipe; this GUI process needs no admin rights. */
+    m_svc = new ServiceClient(this);
+    connect(m_svc, &ServiceClient::stateChanged, this, &MainWindow::onSvcState);
+    connect(m_svc, &ServiceClient::logReceived, this, &MainWindow::onSvcLog);
+    connect(m_svc, &ServiceClient::statsReceived, this, &MainWindow::onSvcStats);
+    connect(m_svc, &ServiceClient::ipInfoReceived, this, &MainWindow::onSvcIpInfo);
+    connect(m_svc, &ServiceClient::promptReceived, this, &MainWindow::onSvcPrompt);
+    connect(m_svc, &ServiceClient::persistReceived, this, &MainWindow::onSvcPersist);
+    connect(m_svc, &ServiceClient::serviceError, this, &MainWindow::onSvcError);
+    connect(m_svc, &ServiceClient::serviceUnavailable, this, [](const QString& why) {
+        Logger::instance().addMessage(QObject::tr("VPN service unavailable: ") + why);
+    });
 
     connect(ui->actionQuit, &QAction::triggered,
         [=]() {
@@ -329,18 +352,11 @@ static void term_thread(MainWindow* m, SOCKET* fd)
 
 MainWindow::~MainWindow()
 {
-    int counter = 10;
     if (this->timer->isActive()) {
         timer->stop();
     }
-
-    if (this->futureWatcher.isRunning() == true) {
-        term_thread(this, &this->cmd_fd);
-    }
-    while (this->futureWatcher.isRunning() == true && counter > 0) {
-        ms_sleep(200);
-        counter--;
-    }
+    if (m_svc)
+        m_svc->disconnectVpn();
 
     writeSettings();
 
@@ -617,33 +633,12 @@ void MainWindow::on_disconnectClicked()
         this->timer->stop();
     }
     Logger::instance().addMessage(QObject::tr("Disconnecting..."));
-    term_thread(this, &this->cmd_fd);
+    vpn_status_changed(STATUS_DISCONNECTING);
+    m_svc->disconnectVpn();
 }
 
 void MainWindow::on_connectClicked()
 {
-    VpnInfo* vpninfo = nullptr;
-    StoredServer* ss = new StoredServer();
-    QFuture<void> future;
-    QString name, url;
-    QList<QNetworkProxy> proxies;
-    QUrl turl;
-    QNetworkProxyQuery query;
-
-    if (this->cmd_fd != INVALID_SOCKET) {
-        QMessageBox::information(this,
-            qApp->applicationName(),
-            tr("A previous VPN instance is still running (socket is active)"));
-        return;
-    }
-
-    if (this->futureWatcher.isRunning() == true) {
-        QMessageBox::information(this,
-            qApp->applicationName(),
-            tr("A previous VPN instance is still running"));
-        return;
-    }
-
     if (ui->serverList->currentText().isEmpty()) {
         QMessageBox::information(this,
             qApp->applicationName(),
@@ -651,68 +646,43 @@ void MainWindow::on_connectClicked()
         return;
     }
 
-    name = ui->serverList->currentText();
-    ss->load(name);
-    turl.setUrl("https://" + ss->get_servername());
-    query.setUrl(turl);
+    QString nm = ui->serverList->currentText();
+    m_connectingName = nm;
 
-    /* ss is now deallocated by vpninfo */
-    try {
-        vpninfo = new VpnInfo(QStringLiteral("Open AnyConnect VPN Agent"), ss, this);
-    } catch (std::exception& ex) {
-        QMessageBox::information(this,
-            qApp->applicationName(),
-            tr("There was an issue initializing the VPN ") + "(" + ex.what() + ").");
-        goto fail;
-    }
+    StoredServer ss;
+    ss.load(nm);
 
-    this->minimize_on_connect = vpninfo->get_minimize();
+    auto readPem = [](const QString& path) -> QByteArray {
+        if (path.isEmpty())
+            return {};
+        QFile f(path);
+        return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray{};
+    };
 
-    vpninfo->parse_url(ss->get_servername().toLocal8Bit().data());
+    oc::ipc::Profile p;
+    p.name = nm;
+    p.server = ss.get_servername();
+    p.protocol = QString::fromLatin1(ss.get_protocol_name());
+    p.camouflageSecret = ss.get_camouflage_secret();
+    p.disableUdp = ss.get_disable_udp();
+    p.autoAcceptBanner = ss.get_auto_accept_banner();
+    p.reconnectTimeout = ss.get_reconnect_timeout();
+    p.dtlsReconnectTimeout = ss.get_dtls_reconnect_timeout();
+    p.reportedOs = QStringLiteral("win");
+    p.username = ss.get_username();
+    p.password = ss.get_password();
+    p.groupname = ss.get_groupname();
+    p.tokenType = ss.get_token_type();
+    p.tokenSecret = ss.get_token_str();
+    p.clientCertPem = readPem(ss.get_cert_file());
+    p.clientKeyPem = readPem(ss.get_key_file());
+    p.caCertPem = readPem(ss.get_ca_cert_file());
 
-    this->cmd_fd = vpninfo->get_cmd_fd();
-    if (this->cmd_fd == INVALID_SOCKET) {
-        QMessageBox::information(this,
-            qApp->applicationName(),
-            tr("There was an issue establishing IPC with openconnect; try restarting the application."));
-        goto fail;
-    }
+    this->minimize_on_connect = ss.get_minimize();
 
-    if (ss->get_proxy()) {
-        proxies = QNetworkProxyFactory::systemProxyForQuery(query);
-        if (proxies.size() > 0 && proxies.at(0).type() != QNetworkProxy::NoProxy) {
-            if (proxies.at(0).type() == QNetworkProxy::Socks5Proxy)
-                url = "socks5://";
-            else if (proxies.at(0).type() == QNetworkProxy::HttpCachingProxy
-                || proxies.at(0).type() == QNetworkProxy::HttpProxy)
-                url = "http://";
-
-            if (url.isEmpty() == false) {
-
-                QString str;
-                if (proxies.at(0).user() != 0) {
-                    str = proxies.at(0).user() + ":" + proxies.at(0).password() + "@";
-                }
-                str += proxies.at(0).hostName();
-                if (proxies.at(0).port() != 0) {
-                    str += ":" + QString::number(proxies.at(0).port());
-                }
-                Logger::instance().addMessage(tr("Setting proxy to: ") + str);
-                // FIXME: ...
-                int ret = openconnect_set_http_proxy(vpninfo->vpninfo, str.toLatin1().data());
-            }
-        }
-    }
-
-    future = QtConcurrent::run(main_loop, vpninfo, this);
-
-    this->futureWatcher.setFuture(future);
-
-    return;
-fail: // LCA: remote 'fail' label :/
-    if (vpninfo != nullptr)
-        delete vpninfo;
-    return;
+    Logger::instance().addMessage(tr("Connecting via service to ") + p.server);
+    vpn_status_changed(STATUS_CONNECTING);
+    m_svc->connectVpn(p);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -736,19 +706,8 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
 void MainWindow::request_update_stats()
 {
-    char cmd = OC_CMD_STATS;
-    if (this->cmd_fd != INVALID_SOCKET) {
-        int ret = pipe_write(this->cmd_fd, &cmd, 1);
-        if (ret < 0) {
-            Logger::instance().addMessage(QObject::tr("update_stats: IPC error: ") + QString::number(net_errno));
-            if (this->timer->isActive())
-                this->timer->stop();
-        }
-    } else {
-        Logger::instance().addMessage(QObject::tr("update_stats: invalid socket"));
-        if (this->timer->isActive())
-            this->timer->stop();
-    }
+    if (m_svc)
+        m_svc->requestStatus();
 }
 
 void MainWindow::readSettings()
@@ -953,4 +912,163 @@ void MainWindow::on_actionAboutQt_triggered()
 void MainWindow::on_actionWebSite_triggered()
 {
     QDesktopServices::openUrl(QUrl("https://openconnect.github.io/openconnect-gui"));
+}
+
+
+/* ===================================================================== *
+ * Privilege separation: events arriving from the unprivileged service   *
+ * client. All run on the GUI thread, so dialogs can be shown directly.  *
+ * ===================================================================== */
+
+void MainWindow::onSvcState(const QString& state, const QString& detail)
+{
+    if (state == QLatin1String("connected")) {
+        changeStatus(STATUS_CONNECTED);
+    } else if (state == QLatin1String("disconnecting")) {
+        changeStatus(STATUS_DISCONNECTING);
+    } else if (state == QLatin1String("disconnected")) {
+        if (!detail.isEmpty())
+            Logger::instance().addMessage(detail);
+        changeStatus(STATUS_DISCONNECTED);
+    } else if (state == QLatin1String("error")) {
+        Logger::instance().addMessage(tr("VPN error: ") + detail);
+        changeStatus(STATUS_DISCONNECTED);
+    } else {
+        /* connecting / authenticating / obtaining-cookie / cstp / setup-tun / reconnecting */
+        changeStatus(STATUS_CONNECTING);
+    }
+}
+
+void MainWindow::onSvcLog(int level, const QString& msg)
+{
+    Q_UNUSED(level);
+    Logger::instance().addMessage(msg);
+}
+
+void MainWindow::onSvcStats(double rx, double tx, const QString& cstp, const QString& dtls)
+{
+    ui->downloadLabel->setText(normalize_byte_size(static_cast<uint64_t>(rx)));
+    ui->uploadLabel->setText(normalize_byte_size(static_cast<uint64_t>(tx)));
+    this->cstp_cipher = cstp;
+    this->dtls_cipher = dtls;
+    ui->cipherCSTPLabel->setText(cstp);
+    ui->cipherDTLSLabel->setText(dtls);
+}
+
+void MainWindow::onSvcIpInfo(const QString& addr, const QString& netmask,
+                             const QString& addr6, const QString& dns)
+{
+    this->ip = addr;
+    if (!netmask.isEmpty())
+        this->ip += "/" + netmask;
+    this->ip6 = addr6;
+    this->dns = dns;
+    ui->ipV4Label->setText(this->ip);
+    ui->ipV6Label->setText(this->ip6);
+    ui->dnsLabel->setText(this->dns);
+}
+
+void MainWindow::onSvcPrompt(const QString& kind, quint64 promptId, const QJsonObject& body)
+{
+    if (kind == QLatin1String("auth-form")) {
+        const QJsonObject form = body.value("form").toObject();
+        QJsonObject fields;
+
+        const QJsonObject g = form.value("authgroup").toObject();
+        if (!g.isEmpty()) {
+            QStringList labels, names;
+            for (const auto& v : g.value("choices").toArray()) {
+                const QJsonObject o = v.toObject();
+                names << o.value("name").toString();
+                labels << o.value("label").toString();
+            }
+            MyInputDialog dlg(this, g.value("name").toString(), g.value("label").toString(), labels);
+            dlg.show();
+            QString text;
+            if (!dlg.result(text)) { m_svc->sendPromptResponse(promptId, false); return; }
+            int idx = labels.indexOf(text);
+            fields.insert("__group__", names.value(idx < 0 ? 0 : idx));
+        }
+
+        for (const auto& v : form.value("opts").toArray()) {
+            const QJsonObject o = v.toObject();
+            const QString nm = o.value("name").toString();
+            const QString label = o.value("label").toString();
+            const QString type = o.value("type").toString();
+            if (type == QLatin1String("select")) {
+                QStringList labels, names;
+                for (const auto& cv : o.value("choices").toArray()) {
+                    const QJsonObject co = cv.toObject();
+                    names << co.value("name").toString();
+                    labels << co.value("label").toString();
+                }
+                MyInputDialog dlg(this, nm, label, labels);
+                dlg.show();
+                QString text;
+                if (!dlg.result(text)) { m_svc->sendPromptResponse(promptId, false); return; }
+                int idx = labels.indexOf(text);
+                fields.insert(nm, names.value(idx < 0 ? 0 : idx));
+            } else {
+                QLineEdit::EchoMode em = (type == QLatin1String("password"))
+                    ? QLineEdit::Password : QLineEdit::Normal;
+                MyInputDialog dlg(this, nm, label, em);
+                dlg.show();
+                QString text;
+                if (!dlg.result(text)) { m_svc->sendPromptResponse(promptId, false); return; }
+                fields.insert(nm, text);
+            }
+        }
+        m_svc->sendPromptResponse(promptId, true, QJsonObject{ { "fields", fields } });
+
+    } else if (kind == QLatin1String("cert")) {
+        const QString host = body.value("host").toString();
+        const QString hash = body.value("hash").toString();
+        const QString change = body.value("change").toString();
+        const QString msgText = (change == QLatin1String("key-mismatch"))
+            ? tr("This peer is known but associated with a DIFFERENT key. "
+                 "You may be under attack. Proceed anyway?")
+            : tr("Connecting for the first time to this peer. If you trust it, "
+                 "accept to remember it and continue.");
+        MyCertMsgBox box(this, msgText, tr("Host: ") + host + "\n" + hash,
+                         tr("Trust"), body.value("details").toString());
+        box.show();
+        m_svc->sendPromptResponse(promptId, box.result());
+
+    } else if (kind == QLatin1String("banner")) {
+        MyMsgBox box(this, body.value("banner").toString(), QString(), tr("Accept"));
+        box.show();
+        m_svc->sendPromptResponse(promptId, box.result());
+
+    } else if (kind == QLatin1String("pin")) {
+        MyInputDialog dlg(this, body.value("tokenLabel").toString(),
+                          tr("Enter PIN"), QLineEdit::Password);
+        dlg.show();
+        QString text;
+        bool ok = dlg.result(text);
+        m_svc->sendPromptResponse(promptId, ok, QJsonObject{ { "value", text } });
+    }
+}
+
+void MainWindow::onSvcPersist(const QString& what, const QJsonObject& body)
+{
+    if (m_connectingName.isEmpty())
+        return;
+    QString nm = m_connectingName;
+    StoredServer ss;
+    ss.load(nm);
+    const QString value = body.value("value").toString();
+    bool changed = true;
+    if (what == QLatin1String("username")) ss.set_username(value);
+    else if (what == QLatin1String("password")) ss.set_password(value);
+    else if (what == QLatin1String("groupname")) ss.set_groupname(value);
+    else if (what == QLatin1String("token")) ss.set_token_str(value);
+    else changed = false; /* "trust": gtdb re-import is a later enhancement */
+    if (changed)
+        ss.save();
+}
+
+void MainWindow::onSvcError(const QString& code, const QString& message)
+{
+    Logger::instance().addMessage(tr("Service error [%1]: %2").arg(code, message));
+    changeStatus(STATUS_DISCONNECTED);
 }

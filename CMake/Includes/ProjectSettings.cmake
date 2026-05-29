@@ -1,6 +1,6 @@
 option(PROJ_GNUTLS_DEBUG "Enable GnuTLS debug mode" OFF)
 
-option(PROJ_ADMIN_PRIV_ELEVATION "Admin privileges elevation; don't turn it off in production!! (UAC on Windows) " ON)
+option(PROJ_ADMIN_PRIV_ELEVATION "Embed a requireAdministrator manifest (UAC at every launch). OFF for the privilege-separated build: openconnect-gui-service (LocalSystem) holds the privileges and the GUI runs asInvoker (no UAC)." OFF)
 
 if(MINGW)
     set(DEFAULT_VPNC_SCRIPT "vpnc-script.js")

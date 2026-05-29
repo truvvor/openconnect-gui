@@ -33,6 +33,8 @@ set(${PROJECT_NAME}_SRCS
     keypair.cpp
     main.cpp
     server_storage.cpp
+    serviceclient.cpp
+    serviceclient.h
 
     timestamp.cpp
 

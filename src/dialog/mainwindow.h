@@ -28,6 +28,7 @@
 #include <QMutex>
 #include <QSystemTrayIcon>
 #include <QTimer>
+#include <QJsonObject>
 
 #ifndef _WIN32
 #include <cerrno>
@@ -43,6 +44,7 @@ extern "C" {
 
 class LogDialog;
 class QStateMachine;
+class ServiceClient;
 
 namespace Ui {
 class MainWindow;
@@ -104,6 +106,16 @@ signals:
 private slots:
     void createLogDialog();
 
+    /* privilege-separation: events from the unprivileged ServiceClient */
+    void onSvcState(const QString& state, const QString& detail);
+    void onSvcLog(int level, const QString& msg);
+    void onSvcStats(double rx, double tx, const QString& cstp, const QString& dtls);
+    void onSvcIpInfo(const QString& addr, const QString& netmask,
+                     const QString& addr6, const QString& dns);
+    void onSvcPrompt(const QString& kind, quint64 promptId, const QJsonObject& body);
+    void onSvcPersist(const QString& what, const QJsonObject& body);
+    void onSvcError(const QString& code, const QString& message);
+
 private:
     static QString normalize_byte_size(uint64_t bytes);
     void createTrayIcon();
@@ -115,6 +127,8 @@ private:
      * any multithread issues */
     SOCKET cmd_fd;
     bool minimize_on_connect;
+    ServiceClient* m_svc;
+    QString m_connectingName;
     Ui::MainWindow* ui;
     QTimer* timer;
     QTimer* blink_timer;

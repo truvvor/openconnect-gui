@@ -20,7 +20,11 @@ cd "$REPO"
 cmake -S . -B build-local -G "MinGW Makefiles" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_MAKE_PROGRAM=mingw32-make.exe \
+  -DPROJ_ADMIN_PRIV_ELEVATION=OFF \
   -Dopenconnect-TAG=9.12
+
+# force the resource file to regenerate so the UAC manifest flip is picked up
+rm -f build-local/src/openconnect-gui.rc build-local/src/openconnect-gui.rc.tmp
 
 cmake --build build-local -j"$(nproc)"
 
