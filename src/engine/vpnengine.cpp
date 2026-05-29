@@ -249,9 +249,17 @@ int unlock_token_vfn(void* priv, const char* newtok)
 void setup_tun_vfn(void* priv)
 {
     auto* e = static_cast<VpnEngine*>(priv);
-    /* vpnc-script-win.js is installed next to the service binary */
-    QByteArray script = (QCoreApplication::applicationDirPath() + "/vpnc-script-win.js").toLatin1();
+    /* Use the vpnc script installed next to the binary. The installer ships it
+     * as "vpnc-script.js" (DEFAULT_VPNC_SCRIPT); fall back to the openconnect
+     * zip's "vpnc-script-win.js" only if that's what's actually present. */
+    const QString dir = QCoreApplication::applicationDirPath();
+    QString scriptPath = dir + "/vpnc-script.js";
+    if (!QFile::exists(scriptPath))
+        scriptPath = dir + "/vpnc-script-win.js";
+    const QByteArray script = scriptPath.toLatin1();
     int ret = openconnect_setup_tun_device(e->vpninfo, script.constData(), nullptr);
+    if (ret == 0)
+        e->host->onLog(PRG_INFO, QStringLiteral("vpnc-script: %1").arg(scriptPath));
     if (ret != 0)
         e->m_lastErr = QStringLiteral("Error setting up the TUN device");
     e->logVpncScriptOutput();

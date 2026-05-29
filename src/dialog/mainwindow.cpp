@@ -685,6 +685,20 @@ void MainWindow::on_connectClicked()
     p.clientKeyPem = readPem(ss.get_key_file());
     p.caCertPem = readPem(ss.get_ca_cert_file());
 
+    /* Remembered server certificate -> profile.trust, so the service does not
+     * raise a cert prompt on every connect once the user has trusted it. */
+    {
+        QSettings st;
+        const QString base = QStringLiteral("server:") + nm + "/";
+        const QString pinHash = st.value(base + "pinned-cert-hash").toString();
+        if (!pinHash.isEmpty()) {
+            oc::ipc::TrustPin pin;
+            pin.hash = pinHash;
+            pin.derBase64 = st.value(base + "pinned-cert-der").toString();
+            p.trust.append(pin);
+        }
+    }
+
     this->minimize_on_connect = ss.get_minimize();
 
     Logger::instance().addMessage(tr("Connecting via service to ") + p.server);
@@ -1070,6 +1084,17 @@ void MainWindow::onSvcPersist(const QString& what, const QJsonObject& body)
     if (m_connectingName.isEmpty())
         return;
     QString nm = m_connectingName;
+
+    if (what == QLatin1String("trust")) {
+        /* Remember the accepted server certificate (hash + DER); replayed as
+         * profile.trust on the next connect so the prompt does not reappear. */
+        QSettings st;
+        const QString base = QStringLiteral("server:") + nm + "/";
+        st.setValue(base + "pinned-cert-hash", body.value("hash").toString());
+        st.setValue(base + "pinned-cert-der", body.value("derBase64").toString());
+        return;
+    }
+
     StoredServer ss;
     ss.load(nm);
     const QString value = body.value("value").toString();
@@ -1078,7 +1103,7 @@ void MainWindow::onSvcPersist(const QString& what, const QJsonObject& body)
     else if (what == QLatin1String("password")) ss.set_password(value);
     else if (what == QLatin1String("groupname")) ss.set_groupname(value);
     else if (what == QLatin1String("token")) ss.set_token_str(value);
-    else changed = false; /* "trust": gtdb re-import is a later enhancement */
+    else changed = false;
     if (changed)
         ss.save();
 }
