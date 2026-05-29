@@ -14,3 +14,9 @@ build-release*/
 _xxx/
 *.zip
 *.exe
+
+# local build machine (scripts/local)
+scripts/local/*.log
+build-local/
+external/*.zip
+external/*.sha512
