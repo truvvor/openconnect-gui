@@ -1,4 +1,7 @@
 
+# Privilege-separation: shared IPC protocol library (GUI client + service server)
+add_subdirectory(ipc)
+
 set_property(SOURCE ${PROJECT_NAME}.cpp PROPERTY SKIP_AUTOGEN ON)
 set_property(SOURCE timestamp.cpp PROPERTY SKIP_AUTOGEN ON)
 
@@ -133,6 +136,8 @@ endif()
 
 # common stuff to link...
 target_link_libraries (${PROJECT_NAME}
+    oc-ipc
+
     spdlog::spdlog
     qt-solutions::qtsingleapplication
 
