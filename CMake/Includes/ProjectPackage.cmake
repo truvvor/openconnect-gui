@@ -49,7 +49,7 @@ if(WIN32 AND MINGW)
     )
 
     # NSIS'es list of all components
-    set(CPACK_COMPONENTS_ALL App App_Console vpnc_script TAP_drivers VcRedist_libs)
+    set(CPACK_COMPONENTS_ALL App App_Console Service vpnc_script TAP_drivers VcRedist_libs)
 
     set(CPACK_COMPONENT_APP_REQUIRED on)
     set(CPACK_COMPONENT_APP_DISPLAY_NAME "GUI")
@@ -76,6 +76,12 @@ if(WIN32 AND MINGW)
     set(CPACK_COMPONENT_VCREDIST_LIBS_GROUP "Drivers")
     set(CPACK_COMPONENT_VCREDIST_LIBS_INSTALL_TYPES Full Standard)
 
+    set(CPACK_COMPONENT_SERVICE_REQUIRED on)
+    set(CPACK_COMPONENT_SERVICE_DISPLAY_NAME "VPN Service")
+    set(CPACK_COMPONENT_SERVICE_DESCRIPTION "Privileged background service that runs the VPN tunnel, so the GUI needs no administrator rights at launch")
+    set(CPACK_COMPONENT_SERVICE_GROUP "Application")
+    set(CPACK_COMPONENT_SERVICE_INSTALL_TYPES Full AppOnly Standard)
+
     set(CPACK_COMPONENT_APP_CONSOLE_DISABLED on)
     set(CPACK_COMPONENT_APP_CONSOLE_REQUIRED off)
     set(CPACK_COMPONENT_APP_CONSOLE_DISPLAY_NAME "console")
@@ -87,7 +93,15 @@ if(WIN32 AND MINGW)
     # vcredis: http://asawicki.info/news_1597_installing_visual_c_redistributable_package_from_command_line.html
     list(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS " ExecWait '\\\"$INSTDIR\\\\Drivers\\\\vcredist_x86.exe\\\" /install /quiet /norestart'")
     list(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS " ExecWait '\\\"$INSTDIR\\\\Drivers\\\\tap-windows.exe\\\" /S /norestart'")
+    # privilege separation: register + start the LocalSystem VPN service.
+    # The installer already runs elevated, so this is the single admin moment;
+    # afterwards the asInvoker GUI connects through the service with no UAC.
+    list(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS " ExecWait '\\\"$INSTDIR\\\\openconnect-gui-service.exe\\\" --install'")
     string(REPLACE ";" "\n" CPACK_NSIS_EXTRA_INSTALL_COMMANDS "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}")
+
+    # stop + deregister the service before its files are removed
+    list(APPEND CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS " ExecWait '\\\"$INSTDIR\\\\openconnect-gui-service.exe\\\" --uninstall'")
+    string(REPLACE ";" "\n" CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS "${CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS}")
 
     # NSIS'es Runtime-group
     set(CPACK_COMPONENT_GROUP_APPLICATION_DESCRIPTION "Main application and network configuration script")

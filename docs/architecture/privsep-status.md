@@ -49,3 +49,48 @@ git log --oneline -5     # head should be the latest P# commit
 # next: implement src/engine/vpnengine.{h,cpp} (P3), add to service target,
 #       push, watch build-windows, iterate to green.
 ```
+
+
+---
+
+## RESULT — privilege separation complete & E2E verified (2026-05-29)
+
+Built locally (MSYS2 MINGW64, Qt 5.15.18) — CI was over quota, so a local build
+machine was stood up (`scripts/local/*.sh`). All phases P0–P7 done:
+
+| Phase | Commit | State |
+|---|---|---|
+| P0 design + protocol | `fb31a4b` | done |
+| P1 oc-ipc | `943106d` | done |
+| P2 service skeleton | `ce79060` | done |
+| P3 VpnEngine | `f9f021a` | done |
+| P4 IPC lifecycle + prompts | `5006767` | done |
+| P5 GUI ServiceClient + asInvoker | `6f04a11` | done |
+| P7 fix + E2E client | `90ad3fb` | done |
+| P6 NSIS service registration | (this) | done |
+
+**Binaries (asInvoker verified on the PE):** `openconnect-gui.exe`
+requireAdministrator=**False**, asInvoker=**True** → no UAC at launch. Service
+runs as LocalSystem via SCM.
+
+**Live E2E (unprivileged `octest` → service → camouflaged VPN):**
+connected to `7b0c.gk-msk05.netcraze.pro` with `camouflage-secret` + `no-dtls`,
+cert prompt marshalled to the client, auth `admin`, CSTP tunnel up, assigned
+**172.16.10.3**, TUN opened by the LocalSystem service. The unprivileged client
+never touched the adapter/routes.
+
+**Installer:** `openconnect-gui-1.5.3-win64.exe` (~50 MB) registers the service
+on install (the one elevated moment) and deregisters on uninstall.
+
+### Security review notes / follow-ups
+- **Pipe ACL.** Implemented with `QLocalServer::WorldAccessOption` (Qt cannot set
+  an arbitrary SDDL on its pipe). This is broader than the documented
+  INTERACTIVE-only `kPipeSddl`. Mitigation in place: service identifies the client
+  PID; hardening TODO: reimplement the accept loop with `CreateNamedPipe` + the
+  SDDL, or verify the client token is INTERACTIVE and the image is the signed GUI.
+- **Secrets** travel plaintext over the local kernel pipe only at connect time;
+  the service persists none (GUI keeps them DPAPI-encrypted). Buffers not yet zeroed.
+- **Trust persistence** (`persist{what:trust}`) is logged but not yet re-imported
+  into the GUI's gtdb store, so the cert prompt re-appears each first connect per
+  server — functional, not yet polished.
+- Single active tunnel per service instance (second connect rejected `busy`).
