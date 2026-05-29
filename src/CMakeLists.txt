@@ -2,6 +2,11 @@
 # Privilege-separation: shared IPC protocol library (GUI client + service server)
 add_subdirectory(ipc)
 
+# Privilege-separation: the privileged Windows VPN service (Windows-only)
+if(MINGW)
+    add_subdirectory(service)
+endif()
+
 set_property(SOURCE ${PROJECT_NAME}.cpp PROPERTY SKIP_AUTOGEN ON)
 set_property(SOURCE timestamp.cpp PROPERTY SKIP_AUTOGEN ON)
 
