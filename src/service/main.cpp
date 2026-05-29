@@ -15,6 +15,13 @@
 #include <QCoreApplication>
 #include <cstring>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#endif
+extern "C" {
+#include <openconnect.h>
+}
+
 static void setupServer(QCoreApplication& app)
 {
     auto* server = new PipeServer(&app);
@@ -26,6 +33,13 @@ int main(int argc, char** argv)
 {
     QCoreApplication::setApplicationName(QStringLiteral("openconnect-gui-service"));
     QCoreApplication::setOrganizationName(QStringLiteral("OpenConnect-GUI Team"));
+
+    /* libopenconnect's command pipe is an emulated socketpair that needs Winsock
+     * up; QLocalServer (named pipes) never starts it. Also init gnutls/SSL. */
+#ifdef _WIN32
+    { WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa); }
+#endif
+    openconnect_init_ssl();
 
     const char* mode = (argc > 1) ? argv[1] : "--run";
 

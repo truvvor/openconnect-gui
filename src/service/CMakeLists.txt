@@ -37,6 +37,7 @@ target_link_libraries(${SERVICE_TARGET}
     Qt5::Network
     advapi32
     wsock32
+    ws2_32
 
     # in-process libopenconnect engine
     openconnect::openconnect
