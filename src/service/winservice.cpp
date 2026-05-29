@@ -106,11 +106,26 @@ int install()
 
     if (!svc) {
         const DWORD e = GetLastError();
-        CloseServiceHandle(scm);
         if (e == ERROR_SERVICE_EXISTS) {
-            svc::log::info(QStringLiteral("service already installed"));
+            // Reinstall/repair: re-point the existing registration at THIS binary
+            // (a prior install may have registered a different path) and restart.
+            SC_HANDLE ex = OpenServiceW(scm, kServiceName,
+                SERVICE_CHANGE_CONFIG | SERVICE_STOP | SERVICE_START | SERVICE_QUERY_STATUS);
+            if (ex) {
+                SERVICE_STATUS st{};
+                ControlService(ex, SERVICE_CONTROL_STOP, &st);
+                Sleep(1500);
+                ChangeServiceConfigW(ex, SERVICE_NO_CHANGE, SERVICE_AUTO_START,
+                    SERVICE_NO_CHANGE, reinterpret_cast<LPCWSTR>(bin.utf16()),
+                    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+                StartServiceW(ex, 0, nullptr);
+                CloseServiceHandle(ex);
+            }
+            CloseServiceHandle(scm);
+            svc::log::info(QStringLiteral("service already installed; binPath updated + restarted"));
             return 0;
         }
+        CloseServiceHandle(scm);
         svc::log::error(QStringLiteral("CreateService failed: %1").arg(e));
         return 1;
     }
