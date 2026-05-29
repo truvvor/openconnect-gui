@@ -191,6 +191,23 @@
        </item>
       </layout>
      </item>
+     <item row="7" column="0">
+      <widget class="QLabel" name="passwordLabel">
+       <property name="text">
+        <string>Password</string>
+       </property>
+      </widget>
+     </item>
+     <item row="7" column="1">
+      <widget class="QLineEdit" name="passwordEdit">
+       <property name="echoMode">
+        <enum>QLineEdit::Password</enum>
+       </property>
+       <property name="toolTip">
+        <string>Optional. Stored encrypted only when &quot;Save password&quot; is checked; leave empty to be prompted at connect.</string>
+       </property>
+      </widget>
+     </item>
      <item row="8" column="0">
       <widget class="QLabel" name="otpTokenLabel">
        <property name="text">

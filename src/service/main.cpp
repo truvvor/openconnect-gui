@@ -34,6 +34,11 @@ int main(int argc, char** argv)
     QCoreApplication::setApplicationName(QStringLiteral("openconnect-gui-service"));
     QCoreApplication::setOrganizationName(QStringLiteral("OpenConnect-GUI Team"));
 
+    /* Make vpnc-script-win.js write its per-command output to %TEMP%\vpnc.log,
+     * which the engine forwards into the GUI connection log (so route/netsh
+     * failures are visible). Matches the original GUI's main.cpp. */
+    qputenv("LOG2FILE", "1");
+
     /* libopenconnect's command pipe is an emulated socketpair that needs Winsock
      * up; QLocalServer (named pipes) never starts it. Also init gnutls/SSL. */
 #ifdef _WIN32

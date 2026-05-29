@@ -138,6 +138,7 @@ EditDialog::EditDialog(QString server, QWidget* parent)
     }
     ui->groupnameEdit->setText(ss->get_groupname());
     ui->usernameEdit->setText(ss->get_username());
+    ui->passwordEdit->setText(ss->get_password());
     ui->gatewayEdit->setText(ss->get_servername());
     ui->userCertHash->setText(ss->get_client_cert_hash());
     ui->caCertHash->setText(ss->get_ca_cert_hash());
@@ -244,6 +245,7 @@ void EditDialog::on_buttonBox_accepted()
     }
     ss->set_label(ui->nameEdit->text());
     ss->set_username(ui->usernameEdit->text());
+    ss->set_password(ui->passwordEdit->text());
     ss->set_servername(ui->gatewayEdit->text());
     ss->set_batch_mode(ui->batchModeBox->isChecked());
     ss->set_minimize(ui->minimizeBox->isChecked());
