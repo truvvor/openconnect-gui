@@ -32,6 +32,7 @@ StoredServer::StoredServer()
     , m_proxy{ false }
     , m_disable_udp{ false }
     , m_auto_accept_banner{ true }
+    , m_force_password_prompt{ false }
     , m_reconnect_timeout{ 300 }
     , m_dtls_attempt_period{ 25 }
     , m_protocol_id(0)
@@ -165,6 +166,7 @@ int StoredServer::load(QString& name)
     /* default ON: most users don't want to click through "Welcome to KN-..."
      * banners every connect. They can turn it off in the profile editor. */
     this->m_auto_accept_banner = settings.value("auto-accept-banner", true).toBool();
+    this->m_force_password_prompt = settings.value("force-password-prompt", false).toBool();
     this->m_minimize_on_connect = settings.value("minimize-on-connect", false).toBool();
     this->m_reconnect_timeout = settings.value("reconnect-timeout", 300).toInt();
     this->m_dtls_attempt_period = settings.value("dtls_attempt_period", 25).toInt();
@@ -255,6 +257,7 @@ int StoredServer::save()
     settings.setValue("proxy", this->m_proxy);
     settings.setValue("disable-udp", this->m_disable_udp);
     settings.setValue("auto-accept-banner", this->m_auto_accept_banner);
+    settings.setValue("force-password-prompt", this->m_force_password_prompt);
     settings.setValue("minimize-on-connect", this->m_minimize_on_connect);
     settings.setValue("reconnect-timeout", this->m_reconnect_timeout);
     settings.setValue("dtls_attempt_period", this->m_dtls_attempt_period);
@@ -322,6 +325,16 @@ bool StoredServer::get_auto_accept_banner() const
 void StoredServer::set_auto_accept_banner(bool v)
 {
     this->m_auto_accept_banner = v;
+}
+
+bool StoredServer::get_force_password_prompt() const
+{
+    return this->m_force_password_prompt;
+}
+
+void StoredServer::set_force_password_prompt(bool v)
+{
+    this->m_force_password_prompt = v;
 }
 
 const QString& StoredServer::get_username() const

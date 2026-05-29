@@ -614,6 +614,19 @@ When the secret is set: the tunnel URL changes to /api/v1/session, the X-CSTP-/X
         </property>
        </widget>
       </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QCheckBox" name="forcePasswordPromptBox">
+        <property name="text">
+         <string>Always ask for the password on connect (even if one is saved)</string>
+        </property>
+        <property name="toolTip">
+         <string>Keep the saved password but still prompt for it at connect time. The prompt is pre-filled with the saved value, so you can confirm or override it. Default: off.</string>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

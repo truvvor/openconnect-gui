@@ -129,6 +129,7 @@ private:
     bool minimize_on_connect;
     ServiceClient* m_svc;
     QString m_connectingName;
+    QString m_savedPassword;
     Ui::MainWindow* ui;
     QTimer* timer;
     QTimer* blink_timer;

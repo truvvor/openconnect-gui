@@ -154,6 +154,7 @@ EditDialog::EditDialog(QString server, QWidget* parent)
     // anyone configuring camouflage; user can still uncheck).
     ui->camouflageForceTcpBox->setChecked(!ss->get_camouflage_secret().isEmpty());
     ui->autoAcceptBannerBox->setChecked(ss->get_auto_accept_banner());
+    ui->forcePasswordPromptBox->setChecked(ss->get_force_password_prompt());
 
     // Load the windows certificates
     load_win_certs();
@@ -257,6 +258,7 @@ void EditDialog::on_buttonBox_accepted()
     }
     ss->set_disable_udp(disable_udp);
     ss->set_auto_accept_banner(ui->autoAcceptBannerBox->isChecked());
+    ss->set_force_password_prompt(ui->forcePasswordPromptBox->isChecked());
     ss->set_reconnect_timeout(ui->reconnectTimeoutSpinBox->value());
     ss->set_dtls_reconnect_timeout(ui->dtlsAttemptPeriodSpinBox->value());
 

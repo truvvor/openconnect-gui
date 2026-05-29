@@ -34,8 +34,10 @@
 #include "MyInputDialog.h"
 #include "MyMsgBox.h"
 #include <QFile>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QLineEdit>
+#include <QMessageBox>
 
 #include "logger.h"
 
@@ -663,6 +665,8 @@ void MainWindow::on_connectClicked()
     p.name = nm;
     p.server = ss.get_servername();
     p.protocol = QString::fromLatin1(ss.get_protocol_name());
+    if (p.protocol.isEmpty())
+        p.protocol = QStringLiteral("anyconnect");
     p.camouflageSecret = ss.get_camouflage_secret();
     p.disableUdp = ss.get_disable_udp();
     p.autoAcceptBanner = ss.get_auto_accept_banner();
@@ -670,7 +674,10 @@ void MainWindow::on_connectClicked()
     p.dtlsReconnectTimeout = ss.get_dtls_reconnect_timeout();
     p.reportedOs = QStringLiteral("win");
     p.username = ss.get_username();
-    p.password = ss.get_password();
+    m_savedPassword = ss.get_password();
+    // "Save password but still ask": when forced, send no password so the engine
+    // raises an auth prompt; the GUI pre-fills it with the saved value.
+    p.password = ss.get_force_password_prompt() ? QString() : m_savedPassword;
     p.groupname = ss.get_groupname();
     p.tokenType = ss.get_token_type();
     p.tokenSecret = ss.get_token_str();
@@ -982,11 +989,13 @@ void MainWindow::onSvcPrompt(const QString& kind, quint64 promptId, const QJsonO
                 names << o.value("name").toString();
                 labels << o.value("label").toString();
             }
-            MyInputDialog dlg(this, g.value("name").toString(), g.value("label").toString(), labels);
-            dlg.show();
-            QString text;
-            if (!dlg.result(text)) { m_svc->sendPromptResponse(promptId, false); return; }
-            int idx = labels.indexOf(text);
+            bool ok = false;
+            const int cur = qMax(0, names.indexOf(g.value("current").toString()));
+            const QString glabel = g.value("label").toString();
+            const QString chosen = QInputDialog::getItem(this, tr("VPN group"),
+                glabel.isEmpty() ? tr("Select group:") : glabel, labels, cur, false, &ok);
+            if (!ok) { m_svc->sendPromptResponse(promptId, false); return; }
+            const int idx = labels.indexOf(chosen);
             fields.insert("__group__", names.value(idx < 0 ? 0 : idx));
         }
 
@@ -1002,19 +1011,20 @@ void MainWindow::onSvcPrompt(const QString& kind, quint64 promptId, const QJsonO
                     names << co.value("name").toString();
                     labels << co.value("label").toString();
                 }
-                MyInputDialog dlg(this, nm, label, labels);
-                dlg.show();
-                QString text;
-                if (!dlg.result(text)) { m_svc->sendPromptResponse(promptId, false); return; }
-                int idx = labels.indexOf(text);
+                bool ok = false;
+                const QString chosen = QInputDialog::getItem(this, windowTitle(),
+                    label.isEmpty() ? nm : label, labels, 0, false, &ok);
+                if (!ok) { m_svc->sendPromptResponse(promptId, false); return; }
+                const int idx = labels.indexOf(chosen);
                 fields.insert(nm, names.value(idx < 0 ? 0 : idx));
             } else {
-                QLineEdit::EchoMode em = (type == QLatin1String("password"))
-                    ? QLineEdit::Password : QLineEdit::Normal;
-                MyInputDialog dlg(this, nm, label, em);
-                dlg.show();
-                QString text;
-                if (!dlg.result(text)) { m_svc->sendPromptResponse(promptId, false); return; }
+                const bool isPass = (type == QLatin1String("password"));
+                bool ok = false;
+                const QString text = QInputDialog::getText(this, windowTitle(),
+                    label.isEmpty() ? nm : label,
+                    isPass ? QLineEdit::Password : QLineEdit::Normal,
+                    isPass ? m_savedPassword : QString(), &ok);
+                if (!ok) { m_svc->sendPromptResponse(promptId, false); return; }
                 fields.insert(nm, text);
             }
         }
@@ -1023,28 +1033,34 @@ void MainWindow::onSvcPrompt(const QString& kind, quint64 promptId, const QJsonO
     } else if (kind == QLatin1String("cert")) {
         const QString host = body.value("host").toString();
         const QString hash = body.value("hash").toString();
-        const QString change = body.value("change").toString();
-        const QString msgText = (change == QLatin1String("key-mismatch"))
-            ? tr("This peer is known but associated with a DIFFERENT key. "
-                 "You may be under attack. Proceed anyway?")
-            : tr("Connecting for the first time to this peer. If you trust it, "
-                 "accept to remember it and continue.");
-        MyCertMsgBox box(this, msgText, tr("Host: ") + host + "\n" + hash,
-                         tr("Trust"), body.value("details").toString());
-        box.show();
-        m_svc->sendPromptResponse(promptId, box.result());
+        const bool mismatch = body.value("change").toString() == QLatin1String("key-mismatch");
+        QMessageBox box(this);
+        box.setIcon(mismatch ? QMessageBox::Warning : QMessageBox::Question);
+        box.setWindowTitle(tr("Verify server certificate"));
+        box.setText(mismatch
+            ? tr("This peer is known but presents a DIFFERENT key. You may be under attack. Proceed anyway?")
+            : tr("First connection to this peer. Trust this certificate and continue?"));
+        box.setInformativeText(tr("Host: %1\n%2").arg(host, hash));
+        const QString details = body.value("details").toString();
+        if (!details.isEmpty())
+            box.setDetailedText(details);
+        box.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+        box.setDefaultButton(QMessageBox::No);
+        m_svc->sendPromptResponse(promptId, box.exec() == QMessageBox::Yes);
 
     } else if (kind == QLatin1String("banner")) {
-        MyMsgBox box(this, body.value("banner").toString(), QString(), tr("Accept"));
-        box.show();
-        m_svc->sendPromptResponse(promptId, box.result());
+        QMessageBox box(this);
+        box.setWindowTitle(tr("Server banner"));
+        box.setText(body.value("banner").toString());
+        box.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+        box.setDefaultButton(QMessageBox::Ok);
+        m_svc->sendPromptResponse(promptId, box.exec() == QMessageBox::Ok);
 
     } else if (kind == QLatin1String("pin")) {
-        MyInputDialog dlg(this, body.value("tokenLabel").toString(),
-                          tr("Enter PIN"), QLineEdit::Password);
-        dlg.show();
-        QString text;
-        bool ok = dlg.result(text);
+        bool ok = false;
+        const QString text = QInputDialog::getText(this,
+            body.value("tokenLabel").toString(), tr("Enter PIN:"),
+            QLineEdit::Password, QString(), &ok);
         m_svc->sendPromptResponse(promptId, ok, QJsonObject{ { "value", text } });
     }
 }

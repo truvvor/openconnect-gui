@@ -58,6 +58,11 @@ public:
     bool get_auto_accept_banner() const;
     void set_auto_accept_banner(bool v);
 
+    /* When true, always prompt for the password at connect time even if one is
+     * saved (batch mode); the saved value pre-fills the prompt in the GUI. */
+    bool get_force_password_prompt() const;
+    void set_force_password_prompt(bool v);
+
     QString get_cert_file();
     QString get_key_file();
     QString get_key_url() const;
@@ -121,6 +126,7 @@ private:
     bool m_proxy;
     bool m_disable_udp;
     bool m_auto_accept_banner;
+    bool m_force_password_prompt;
     int m_reconnect_timeout;
     int m_dtls_attempt_period;
     QString m_username;
