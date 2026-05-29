@@ -8,6 +8,17 @@ exec > "/c/src/openconnect-gui/scripts/local/01-openconnect.log" 2>&1
 set -eux
 which gcc cmake pkg-config bsdtar
 
+# CI builds openconnect WITHOUT NSIS in PATH, so openconnect's own Windows
+# installer subtree (file-list.txt <- Makefile.dlldeps, which has no rule in the
+# release tarball) is never built. We DO have NSIS installed (for the GUI
+# packaging), so openconnect's configure detects makensis and then make fails.
+# Hide makensis only for this build; restore on exit (even on error).
+MAKENSIS_BIN="$(command -v makensis || true)"
+if [ -n "$MAKENSIS_BIN" ] && [ -f "$MAKENSIS_BIN" ]; then
+  mv "$MAKENSIS_BIN" "$MAKENSIS_BIN.hidden"
+  trap 'mv "$MAKENSIS_BIN.hidden" "$MAKENSIS_BIN" 2>/dev/null || true' EXIT
+fi
+
 REPO=/c/src/openconnect-gui
 OCVER=9.12
 WORK="$(mktemp -d)"

@@ -6,7 +6,12 @@ export MSYSTEM=MINGW64
 source /etc/profile >/dev/null 2>&1 || true
 exec > "/c/src/openconnect-gui/scripts/local/02-build.log" 2>&1
 set -eux
-which gcc g++ cmake mingw32-make qmake pkg-config
+which gcc g++ cmake mingw32-make pkg-config || true
+
+# Local CMake is 4.x (newer than CI). Old bundled ExternalProjects (spdlog 1.3.1
+# etc.) declare cmake_minimum_required < 3.5, which CMake 4 rejects. This env var
+# is inherited by every ExternalProject sub-cmake and restores the old minimum.
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
 
 REPO=/c/src/openconnect-gui
 cd "$REPO"
