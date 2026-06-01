@@ -126,6 +126,11 @@ if(WIN32 AND MINGW)
     if(EXISTS "${CMAKE_SOURCE_DIR}/nsis/wix-service-patch.xml")
         set(CPACK_WIX_PATCH_FILE "${CMAKE_SOURCE_DIR}/nsis/wix-service-patch.xml")
     endif()
+    # Code-sign the staged exes (post fixup_bundle, pre-MSI) if OCG_SIGN_THUMB is
+    # set in the environment; otherwise this script is a no-op.
+    if(EXISTS "${CMAKE_SOURCE_DIR}/scripts/local/sign-staged.cmake")
+        set(CPACK_PRE_BUILD_SCRIPTS "${CMAKE_SOURCE_DIR}/scripts/local/sign-staged.cmake")
+    endif()
 
     # source code packaging
     #set(CPACK_SOURCE_PACKAGE_FILE_NAME )

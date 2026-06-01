@@ -20,3 +20,7 @@ scripts/local/*.log
 build-local/
 external/*.zip
 external/*.sha512
+
+# Local build outputs
+artifacts/
+scripts/local/*.log
