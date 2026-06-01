@@ -115,6 +115,18 @@ if(WIN32 AND MINGW)
     set(CPACK_INSTALL_TYPE_APPONLY_DISPLAY_NAME "Application only")
     set(CPACK_INSTALL_TYPE_STANDARD_DISPLAY_NAME "Standard installation")
 
+    # --- WiX / MSI for GPO mass-deployment ( cpack -G WIX ) ---
+    # Stable upgrade GUID so future MSIs upgrade in place. Per-machine install
+    # (default for WiX) suits machine-targeted GPO Software Installation.
+    set(CPACK_WIX_UPGRADE_GUID "4D8B2A1E-9F3C-4E7A-B6D5-1C2E3F4A5B6C")
+    set(CPACK_WIX_PROGRAM_MENU_FOLDER "${PRODUCT_NAME_SHORT}")
+    set(CPACK_WIX_PROPERTY_ARPHELPLINK "https://openconnect.github.io/openconnect-gui")
+    # WiX fragment that adds the Windows service (ServiceInstall/ServiceControl)
+    # onto the service-exe component; only applied if the file exists.
+    if(EXISTS "${CMAKE_SOURCE_DIR}/nsis/wix-service-patch.xml")
+        set(CPACK_WIX_PATCH_FILE "${CMAKE_SOURCE_DIR}/nsis/wix-service-patch.xml")
+    endif()
+
     # source code packaging
     #set(CPACK_SOURCE_PACKAGE_FILE_NAME )
     set(CPACK_SOURCE_GENERATOR "7Z")

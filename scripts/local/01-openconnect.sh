@@ -67,6 +67,8 @@ for h in gmp.h gmpxx.h zlib.h zconf.h lz4.h lzma.h; do
   [ -f "$MINGW_INC/$h" ] && install -D "$MINGW_INC/$h" "$STAGE_DEV/include/$(basename "$h")" || true
 done
 cp /mingw64/bin/*.dll "$STAGE_RT/" 2>/dev/null || true
+# wintun.dll: runtime driverless adapter (used on machines without a TAP adapter)
+cp "$WORK/wintun-pkg/wintun/bin/amd64/wintun.dll" "$STAGE_RT/" 2>/dev/null || true
 for g in libopenconnect libgnutls libgnutls-openssl libgnutlsxx libgmp libhogweed \
          libnettle libp11-kit libtasn1 libxml2 libxml libstoken libidn2 libunistring \
          libffi libz zlib liblz4 liblzma libiconv libintl libcharset libpsl \

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CPack WiX patch: turn the openconnect-gui-service.exe component into a proper
+  Windows service via the MSI ServiceInstall/ServiceControl tables. Installed as
+  LocalSystem, auto-start; started on install, stopped+removed on uninstall.
+  No custom action needed, so it works cleanly under GPO (MSI runs as SYSTEM).
+-->
+<CPackWiXPatch>
+  <CPackWiXFragment Id="CM_CP_Service.openconnect_gui_service.exe">
+    <ServiceInstall Id="OpenConnectGuiServiceInstall"
+                    Name="OpenConnectGuiService"
+                    DisplayName="OpenConnect-GUI VPN Service"
+                    Description="Runs the OpenConnect VPN tunnel with system privileges so OpenConnect-GUI can connect without per-launch administrator elevation."
+                    Type="ownProcess"
+                    Start="auto"
+                    ErrorControl="normal"
+                    Account="LocalSystem"
+                    Arguments="--run"
+                    Vital="yes"
+                    Interactive="no"/>
+    <ServiceControl Id="OpenConnectGuiServiceControl"
+                    Name="OpenConnectGuiService"
+                    Start="install"
+                    Stop="both"
+                    Remove="uninstall"
+                    Wait="no"/>
+  </CPackWiXFragment>
+</CPackWiXPatch>
