@@ -480,23 +480,29 @@ void VpnEngine::logVpncScriptOutput()
     file.close();
     file.remove();
 
-    /* vpnc-script.js writes console output (route/netsh) in the OEM codepage
-     * (cp866 on RU Windows), NOT UTF-8 — decode with the real OEM codepage to
-     * avoid mojibake in the connection log. */
-    QString content;
+    /* The vpnc-script log is MIXED-encoding: `route` emits the OEM codepage
+     * (cp866 on RU Windows) while `netsh` emits UTF-8 when its output is
+     * redirected. Decode per line: use UTF-8 when the bytes are valid UTF-8,
+     * otherwise fall back to the OEM codepage. */
 #ifdef _WIN32
-    QTextCodec* codec = QTextCodec::codecForName("CP" + QByteArray::number(GetOEMCP()));
-    if (!codec)
-        codec = QTextCodec::codecForName("IBM866");
-    content = codec ? codec->toUnicode(raw) : QString::fromLocal8Bit(raw);
+    QTextCodec* oem = QTextCodec::codecForName("CP" + QByteArray::number(GetOEMCP()));
+    if (!oem)
+        oem = QTextCodec::codecForName("IBM866");
 #else
-    content = QString::fromUtf8(raw);
+    QTextCodec* oem = nullptr;
 #endif
 
     QString banner;
     bool inBanner = false;
-    const QStringList lines = content.split('\n');
-    for (QString line : lines) {
+    const QList<QByteArray> rawLines = raw.split('\n');
+    for (QByteArray rl : rawLines) {
+        if (rl.endsWith('\r'))
+            rl.chop(1);
+        if (rl.isEmpty())
+            continue;
+        QString line = QString::fromUtf8(rl);
+        if (oem && line.contains(QChar(QChar::ReplacementCharacter)))
+            line = oem->toUnicode(rl);   // not valid UTF-8 -> OEM (route output)
         line = line.trimmed();
         if (line.isEmpty())
             continue;
