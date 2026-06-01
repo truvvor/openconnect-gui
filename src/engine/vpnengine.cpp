@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
+#include <QTextCodec>
 
 #include <cstdarg>
 #include <cstdio>
@@ -18,7 +19,9 @@ extern "C" {
 #include <openconnect.h>
 }
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>   // GetOEMCP() for decoding vpnc-script console output
+#else
 #include <fcntl.h>
 #endif
 
@@ -150,6 +153,7 @@ int process_auth_form(void* priv, struct oc_auth_form* form)
             if (e->form_pass_attempt == 0 && !e->profile.password.isEmpty()
                 && strcasecmp(opt->name, "password") == 0) {
                 openconnect_set_option_value(opt, e->profile.password.toLatin1().data());
+                e->form_pass_attempt++; /* used once; a re-presented form (wrong saved pw) will prompt */
                 empty = 0;
                 continue;
             }
@@ -472,17 +476,35 @@ void VpnEngine::logVpncScriptOutput()
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return;
+    const QByteArray raw = file.readAll();
+    file.close();
+    file.remove();
+
+    /* vpnc-script.js writes console output (route/netsh) in the OEM codepage
+     * (cp866 on RU Windows), NOT UTF-8 — decode with the real OEM codepage to
+     * avoid mojibake in the connection log. */
+    QString content;
+#ifdef _WIN32
+    QTextCodec* codec = QTextCodec::codecForName("CP" + QByteArray::number(GetOEMCP()));
+    if (!codec)
+        codec = QTextCodec::codecForName("IBM866");
+    content = codec ? codec->toUnicode(raw) : QString::fromLocal8Bit(raw);
+#else
+    content = QString::fromUtf8(raw);
+#endif
+
     QString banner;
     bool inBanner = false;
-    while (!file.atEnd()) {
-        const QString line = QString::fromUtf8(file.readLine()).trimmed();
+    const QStringList lines = content.split('\n');
+    for (QString line : lines) {
+        line = line.trimmed();
+        if (line.isEmpty())
+            continue;
         host->onLog(PRG_INFO, line);
         if (line == QLatin1String("--------------------- BANNER ---------------------")) { inBanner = true; continue; }
         if (line == QLatin1String("------------------- BANNER end -------------------")) { inBanner = false; continue; }
         if (inBanner) banner += line + "\n";
     }
-    file.close();
-    file.remove();
     if (!banner.isEmpty()) {
         if (profile.autoAcceptBanner) {
             host->onLog(PRG_INFO, QStringLiteral("Banner auto-accepted"));

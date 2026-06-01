@@ -1101,9 +1101,10 @@ void MainWindow::onSvcPersist(const QString& what, const QJsonObject& body)
     bool changed = true;
     if (what == QLatin1String("username")) ss.set_username(value);
     else if (what == QLatin1String("password")) {
-        /* remember a password entered at the connect prompt only if the profile
-         * opted in via "Save password"; a field-typed password saves on its own. */
-        if (ss.get_batch_mode()) ss.set_password(value);
+        /* Save a password entered at the connect prompt if the profile opts in
+         * ("Save password") OR already has a saved password — the latter lets a
+         * corrected password overwrite a stale/wrong saved one. */
+        if (ss.get_batch_mode() || !ss.get_password().isEmpty()) ss.set_password(value);
         else changed = false;
     }
     else if (what == QLatin1String("groupname")) ss.set_groupname(value);
