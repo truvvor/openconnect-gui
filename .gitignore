@@ -24,3 +24,10 @@ external/*.sha512
 # Local build outputs
 artifacts/
 scripts/local/*.log
+
+# Local debug/test helpers (ipc_probe contains test creds; svcctl/swap are machine-specific)
+scripts/local/ipc_probe.*
+scripts/local/svcctl.*
+scripts/local/swap-service.*
+scripts/local/diag-script.sh
+scripts/local/*.result.txt

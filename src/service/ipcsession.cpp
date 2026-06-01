@@ -146,6 +146,7 @@ void IpcSession::onConnect(const Message& m)
 
 void IpcSession::onDisconnect(const Message&)
 {
+    svc::log::info(QStringLiteral("onDisconnect: engine=%1").arg(m_engine ? QStringLiteral("active") : QStringLiteral("none")));
     if (m_engine)
         m_engine->cancel();
     else
@@ -366,14 +367,22 @@ void IpcSession::runEngine()
     } else {
         m_engine->run();
     }
+    /* Tear down libopenconnect HERE, on the worker thread (mirrors the original
+     * GUI's `delete vpninfo` right after mainloop()). vpninfo_free runs the
+     * reason=disconnect script + closes Wintun and can block; doing it on the
+     * worker thread keeps the service event loop responsive. */
+    m_engine->teardown();
+    svc::log::info(QStringLiteral("runEngine: teardown done; posting finalizeEngine"));
     QMetaObject::invokeMethod(this, "finalizeEngine", Qt::QueuedConnection);
 }
 
 void IpcSession::finalizeEngine()
 {
+    /* Worker has already torn down openconnect; just reap the thread + object. */
     if (m_engineThread.joinable())
         m_engineThread.join();
     delete m_engine;
     m_engine = nullptr;
     m_state = QStringLiteral("idle");
+    svc::log::info(QStringLiteral("finalizeEngine: done; state=idle"));
 }

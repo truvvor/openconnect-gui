@@ -281,9 +281,26 @@ VpnEngine::VpnEngine(const oc::ipc::Profile& p, EngineHost* h)
 
 VpnEngine::~VpnEngine()
 {
-    if (vpninfo)
-        openconnect_vpninfo_free(vpninfo);
+    teardown();          // idempotent: normally already done on the worker thread
     cleanupTempFiles();
+}
+
+/* Free the libopenconnect context. This synchronously runs the vpnc-script with
+ * reason=disconnect (spawns cscript to delete routes/DNS) and closes the Wintun
+ * adapter, so it can block for a noticeable time. It MUST be invoked on the
+ * worker thread that ran the mainloop (as the original GUI did with
+ * `delete vpninfo` right after mainloop()), never on the service's Qt event-loop
+ * thread -- otherwise a slow teardown freezes the whole service (no IPC, tunnel
+ * stuck up, only recoverable by stopping the service). */
+void VpnEngine::teardown()
+{
+    if (!vpninfo)
+        return;
+    if (host) host->onLog(PRG_INFO, QStringLiteral("vpninfo_free: begin (tun/route teardown)"));
+    openconnect_vpninfo_free(vpninfo);
+    vpninfo = nullptr;
+    m_cmdFd = (SOCKET)-1;   // both pipe ends are closed by openconnect_vpninfo_free()
+    if (host) host->onLog(PRG_INFO, QStringLiteral("vpninfo_free: done"));
 }
 
 QString VpnEngine::writeTempPem(const QByteArray& pem, const QString& tag)
@@ -401,6 +418,7 @@ void VpnEngine::mainloop()
 {
     while (true) {
         int ret = openconnect_mainloop(vpninfo, profile.reconnectTimeout, RECONNECT_INTERVAL_MIN);
+        if (host) host->onLog(PRG_INFO, QStringLiteral("openconnect_mainloop returned %1").arg(ret));
         if (ret != 0) {
             m_lastErr = QStringLiteral("Disconnected");
             logVpncScriptOutput();
@@ -458,7 +476,16 @@ void VpnEngine::cancel()
 {
     if (m_cmdFd != INVALID_SOCKET) {
         char cmd = OC_CMD_CANCEL;
-        oc_pipe_write(m_cmdFd, &cmd, 1);
+        int n = oc_pipe_write(m_cmdFd, &cmd, 1);
+#ifdef _WIN32
+        const int e = WSAGetLastError();
+#else
+        const int e = errno;
+#endif
+        if (host) host->onLog(PRG_INFO, QStringLiteral("cancel: wrote %1 byte(s) to cmd pipe (fd=%2 err=%3)")
+                                  .arg(n).arg((qint64)m_cmdFd).arg(e));
+    } else if (host) {
+        host->onLog(PRG_INFO, QStringLiteral("cancel: cmd pipe not ready (INVALID_SOCKET)"));
     }
 }
 
