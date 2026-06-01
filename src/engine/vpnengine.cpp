@@ -436,6 +436,13 @@ int VpnEngine::run()
     do {
         retry = false;
         ret = doConnect();
+        if (m_cancelRequested) {
+            // disconnect arrived during the connect/auth phase: stop now, do not
+            // retry and do not enter the mainloop. runEngine() then tears down.
+            host->onLog(PRG_INFO, QStringLiteral("Connect aborted by user"));
+            host->onState(QStringLiteral("disconnected"), QStringLiteral("Cancelled"));
+            return -1;
+        }
         if (ret != 0) {
             if (retries-- <= 0) { host->onState(QStringLiteral("error"), m_lastErr); host->onState(QStringLiteral("disconnected")); return ret; }
             if (!passWasEmpty) {
@@ -474,6 +481,7 @@ int VpnEngine::run()
 
 void VpnEngine::cancel()
 {
+    m_cancelRequested = true;   // honored by run() to stop the connect/retry loop
     if (m_cmdFd != INVALID_SOCKET) {
         char cmd = OC_CMD_CANCEL;
         int n = oc_pipe_write(m_cmdFd, &cmd, 1);

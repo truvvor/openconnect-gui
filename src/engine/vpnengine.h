@@ -11,6 +11,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <atomic>
+
 #ifdef _WIN32
 #include <winsock2.h>
 #else
@@ -59,6 +61,9 @@ private:
 
     SOCKET m_cmdFd = (SOCKET)-1;
     QStringList m_tempFiles;
+    /* set by cancel() (any thread); honored by run() so a disconnect aborts an
+     * in-progress or retrying connect, not just a running mainloop. */
+    std::atomic<bool> m_cancelRequested{false};
 };
 
 } // namespace oc::engine
