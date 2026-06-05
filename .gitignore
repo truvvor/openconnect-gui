@@ -31,3 +31,8 @@ scripts/local/svcctl.*
 scripts/local/swap-service.*
 scripts/local/diag-script.sh
 scripts/local/*.result.txt
+
+scripts/local/ipc_*
+scripts/local/swap-gui.*
+scripts/local/*.out
+scripts/local/*.err
