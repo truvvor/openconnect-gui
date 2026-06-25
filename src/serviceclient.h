@@ -26,6 +26,7 @@ public:
     bool isReady() const { return m_ready; }
 
     void connectVpn(const oc::ipc::Profile& profile); // opens pipe if needed
+    void resendLastConnect();                         // re-send the last profile (busy retry)
     void disconnectVpn();
     void requestStatus();
     void sendPromptResponse(quint64 promptId, bool ok, const QJsonObject& extra = {});

@@ -97,8 +97,12 @@ MainWindow::MainWindow(QWidget* parent, const QString profileName)
     connect(m_svc, &ServiceClient::promptReceived, this, &MainWindow::onSvcPrompt);
     connect(m_svc, &ServiceClient::persistReceived, this, &MainWindow::onSvcPersist);
     connect(m_svc, &ServiceClient::serviceError, this, &MainWindow::onSvcError);
-    connect(m_svc, &ServiceClient::serviceUnavailable, this, [](const QString& why) {
+    connect(m_svc, &ServiceClient::serviceUnavailable, this, [this](const QString& why) {
         Logger::instance().addMessage(QObject::tr("VPN service unavailable: ") + why);
+        // The service stopped / the pipe dropped: never leave the UI stuck in the
+        // connecting/Cancel state. Reset to disconnected (this also fires
+        // readyToShutdown so a pending close can complete).
+        changeStatus(STATUS_DISCONNECTED);
     });
 
     connect(ui->actionQuit, &QAction::triggered,
@@ -107,6 +111,8 @@ MainWindow::MainWindow(QWidget* parent, const QString profileName)
                 connect(this, &MainWindow::readyToShutdown,
                     qApp, &QApplication::quit);
                 on_disconnectClicked();
+                // Backstop: quit even if the service never confirms the disconnect.
+                QTimer::singleShot(4000, qApp, &QApplication::quit);
             } else {
                 qApp->quit();
             }
@@ -704,6 +710,7 @@ void MainWindow::on_connectClicked()
     this->minimize_on_connect = ss.get_minimize();
 
     Logger::instance().addMessage(tr("Connecting via service to ") + p.server);
+    m_busyRetries = 0;
     vpn_status_changed(STATUS_CONNECTING);
     m_svc->connectVpn(p);
 }
@@ -720,6 +727,8 @@ void MainWindow::closeEvent(QCloseEvent* event)
             connect(this, &MainWindow::readyToShutdown,
                 qApp, &QApplication::quit);
             on_disconnectClicked();
+            // Backstop: quit even if the service never confirms the disconnect.
+            QTimer::singleShot(4000, qApp, &QApplication::quit);
         } else {
             qApp->quit();
         }
@@ -1123,6 +1132,14 @@ void MainWindow::onSvcPersist(const QString& what, const QJsonObject& body)
 
 void MainWindow::onSvcError(const QString& code, const QString& message)
 {
+    // Rapid reconnect: the previous session is still being torn down on the
+    // service side. Don't fail — keep "connecting" and retry shortly.
+    if (code == QLatin1String("busy") && m_busyRetries < 6) {
+        m_busyRetries++;
+        Logger::instance().addMessage(tr("Service busy (previous session finalizing); retry %1...").arg(m_busyRetries));
+        QTimer::singleShot(1200, this, [this]() { if (m_svc) m_svc->resendLastConnect(); });
+        return;
+    }
     Logger::instance().addMessage(tr("Service error [%1]: %2").arg(code, message));
     changeStatus(STATUS_DISCONNECTED);
 }

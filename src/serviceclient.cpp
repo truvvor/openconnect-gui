@@ -16,6 +16,20 @@ ServiceClient::ServiceClient(QObject* parent) : QObject(parent)
     connect(m_sock,
         QOverload<QLocalSocket::LocalSocketError>::of(&QLocalSocket::errorOccurred),
         this, &ServiceClient::onSocketError);
+    // The service stopping (or crashing) closes the pipe without an error; treat
+    // a clean disconnect as "service gone" too, so the GUI can recover its state.
+    connect(m_sock, &QLocalSocket::disconnected, this, [this]() {
+        m_ready = false;
+        m_haveQueuedConnect = false;
+        emit serviceUnavailable(QStringLiteral("connection to the VPN service was closed"));
+    });
+}
+
+void ServiceClient::resendLastConnect()
+{
+    // Re-send the previously requested profile (m_queuedConnect still holds it).
+    m_haveQueuedConnect = true;
+    ensureConnected();
 }
 
 void ServiceClient::ensureConnected()

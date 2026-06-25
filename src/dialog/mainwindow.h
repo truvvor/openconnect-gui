@@ -131,6 +131,7 @@ private:
     QString m_connectingName;
     QString m_savedPassword;
     bool m_forcePasswordPrompt = false;
+    int m_busyRetries = 0;          // rapid-reconnect: retry while the service finalizes
     Ui::MainWindow* ui;
     QTimer* timer;
     QTimer* blink_timer;
