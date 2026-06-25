@@ -245,8 +245,19 @@ void EditDialog::on_buttonBox_accepted()
         return;
     }
     ss->set_label(ui->nameEdit->text());
-    ss->set_username(ui->usernameEdit->text());
-    ss->set_password(ui->passwordEdit->text());
+    /* Login change invalidates a saved password: it belonged to the previous
+     * account. Drop the cache unless the user explicitly typed a new password in
+     * this same edit (i.e. the field no longer equals the old saved value). */
+    const QString oldUser = ss->get_username();
+    const QString oldPass = ss->get_password();
+    const QString newUser = ui->usernameEdit->text();
+    const QString newPass = ui->passwordEdit->text();
+    ss->set_username(newUser);
+    if (newUser != oldUser && newPass == oldPass) {
+        ss->set_password(QString());   // forget the previous account's password
+    } else {
+        ss->set_password(newPass);
+    }
     ss->set_servername(ui->gatewayEdit->text());
     ss->set_batch_mode(ui->batchModeBox->isChecked());
     ss->set_minimize(ui->minimizeBox->isChecked());
