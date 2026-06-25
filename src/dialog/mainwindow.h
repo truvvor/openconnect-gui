@@ -130,6 +130,7 @@ private:
     ServiceClient* m_svc;
     QString m_connectingName;
     QString m_savedPassword;
+    bool m_forcePasswordPrompt = false;
     Ui::MainWindow* ui;
     QTimer* timer;
     QTimer* blink_timer;

@@ -675,9 +675,10 @@ void MainWindow::on_connectClicked()
     p.reportedOs = QStringLiteral("win");
     p.username = ss.get_username();
     m_savedPassword = ss.get_password();
+    m_forcePasswordPrompt = ss.get_force_password_prompt();
     // "Save password but still ask": when forced, send no password so the engine
     // raises an auth prompt; the GUI pre-fills it with the saved value.
-    p.password = ss.get_force_password_prompt() ? QString() : m_savedPassword;
+    p.password = m_forcePasswordPrompt ? QString() : m_savedPassword;
     p.groupname = ss.get_groupname();
     p.tokenType = ss.get_token_type();
     p.tokenSecret = ss.get_token_str();
@@ -1034,10 +1035,15 @@ void MainWindow::onSvcPrompt(const QString& kind, quint64 promptId, const QJsonO
             } else {
                 const bool isPass = (type == QLatin1String("password"));
                 bool ok = false;
+                // Pre-fill the saved password ONLY for the "always ask" confirm
+                // case. A re-prompt after a failed saved password (or a changed
+                // username) must start EMPTY, otherwise the stale password is
+                // shown and can be re-submitted unchanged.
+                const QString prefill = (isPass && m_forcePasswordPrompt) ? m_savedPassword : QString();
                 const QString text = QInputDialog::getText(this, windowTitle(),
                     label.isEmpty() ? nm : label,
                     isPass ? QLineEdit::Password : QLineEdit::Normal,
-                    isPass ? m_savedPassword : QString(), &ok);
+                    prefill, &ok);
                 if (!ok) { m_svc->sendPromptResponse(promptId, false); return; }
                 fields.insert(nm, text);
             }
