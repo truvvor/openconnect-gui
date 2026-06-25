@@ -1132,14 +1132,8 @@ void MainWindow::onSvcPersist(const QString& what, const QJsonObject& body)
 
 void MainWindow::onSvcError(const QString& code, const QString& message)
 {
-    // Rapid reconnect: the previous session is still being torn down on the
-    // service side. Don't fail — keep "connecting" and retry shortly.
-    if (code == QLatin1String("busy") && m_busyRetries < 6) {
-        m_busyRetries++;
-        Logger::instance().addMessage(tr("Service busy (previous session finalizing); retry %1...").arg(m_busyRetries));
-        QTimer::singleShot(1200, this, [this]() { if (m_svc) m_svc->resendLastConnect(); });
-        return;
-    }
+    // Rapid reconnect is handled service-side now (a new connect supersedes the
+    // current session), so "busy" should no longer occur for our own session.
     Logger::instance().addMessage(tr("Service error [%1]: %2").arg(code, message));
     changeStatus(STATUS_DISCONNECTED);
 }

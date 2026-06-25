@@ -11,6 +11,7 @@
 #pragma once
 
 #include "engine/enginehost.h"
+#include "ipc/profile.h"
 #include "ipc/protocol.h"
 
 #include <QHash>
@@ -70,6 +71,7 @@ private:
     void onPromptResponse(const oc::ipc::Message& m);
 
     void runEngine();
+    void startEngine(const oc::ipc::Profile& profile);   // create + start worker
 
     /* blocking prompt rendezvous (engine thread <-> main thread) */
     struct Pending {
@@ -90,6 +92,12 @@ private:
     oc::engine::VpnEngine* m_engine = nullptr;
     std::thread m_engineThread;
     QString m_state = QStringLiteral("idle");
+
+    /* Rapid reconnect: a connect that arrives while a session is still active or
+     * finalizing supersedes it. We cancel the current engine and start this one
+     * once the worker has been reaped — so there is never an orphaned session. */
+    bool m_pendingConnect = false;
+    oc::ipc::Profile m_pendingProfile;
 
     QMutex m_pendingMutex;
     QHash<quint64, Pending*> m_pending;

@@ -134,11 +134,24 @@ void IpcSession::onHello(const Message& m)
 
 void IpcSession::onConnect(const Message& m)
 {
+    const Profile p = Profile::fromJson(m.json().value(QStringLiteral("profile")).toObject());
     if (m_engine) {
-        sendError(m.id(), err::Busy, QStringLiteral("a VPN connection is already active"));
+        /* A session is still active or finalizing (rapid reconnect). Supersede
+         * it: cancel the current engine and start this profile once the worker is
+         * reaped in finalizeEngine(). This guarantees a single session and never
+         * leaves an orphaned tunnel that the GUI thinks is gone. */
+        svc::log::info(QStringLiteral("connect while busy -> superseding current session: %1").arg(p.redactedSummary()));
+        m_pendingProfile = p;
+        m_pendingConnect = true;
+        onState(QStringLiteral("connecting"));
+        m_engine->cancel();
         return;
     }
-    const Profile p = Profile::fromJson(m.json().value(QStringLiteral("profile")).toObject());
+    startEngine(p);
+}
+
+void IpcSession::startEngine(const Profile& p)
+{
     svc::log::info(QStringLiteral("connect: %1").arg(p.redactedSummary()));
     m_engine = new VpnEngine(p, this);
     m_engineThread = std::thread(&IpcSession::runEngine, this);
@@ -385,4 +398,9 @@ void IpcSession::finalizeEngine()
     m_engine = nullptr;
     m_state = QStringLiteral("idle");
     svc::log::info(QStringLiteral("finalizeEngine: done; state=idle"));
+    if (m_pendingConnect) {
+        m_pendingConnect = false;
+        svc::log::info(QStringLiteral("starting superseding connect"));
+        startEngine(m_pendingProfile);
+    }
 }
