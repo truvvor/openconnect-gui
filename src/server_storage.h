@@ -47,6 +47,11 @@ public:
     bool get_disable_udp() const;
     void set_disable_udp(bool v);
 
+    /* Split-tunnel: when true, the client does NOT install a default route;
+     * only the VPN's own subnet (and any server-pushed routes) go via the tunnel. */
+    bool get_no_default_route() const;
+    void set_no_default_route(bool v);
+
     /* Anti-DPI camouflage (Level 2): activates camouflaged wire protocol
      * in libopenconnect 5.10+ when non-empty. Persisted encrypted. */
     const QString& get_camouflage_secret() const;
@@ -125,6 +130,7 @@ private:
     bool m_minimize_on_connect;
     bool m_proxy;
     bool m_disable_udp;
+    bool m_no_default_route;
     bool m_auto_accept_banner;
     bool m_force_password_prompt;
     int m_reconnect_timeout;

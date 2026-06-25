@@ -38,6 +38,7 @@ QJsonObject Profile::toJson() const
         { QStringLiteral("camouflageSecret"), camouflageSecret },
         { QStringLiteral("disableUdp"), disableUdp },
         { QStringLiteral("autoAcceptBanner"), autoAcceptBanner },
+        { QStringLiteral("noDefaultRoute"), noDefaultRoute },
         { QStringLiteral("reconnectTimeout"), reconnectTimeout },
         { QStringLiteral("dtlsReconnectTimeout"), dtlsReconnectTimeout },
         { QStringLiteral("reportedOs"), reportedOs },
@@ -62,6 +63,7 @@ Profile Profile::fromJson(const QJsonObject& o)
     p.camouflageSecret = o.value(QStringLiteral("camouflageSecret")).toString();
     p.disableUdp = o.value(QStringLiteral("disableUdp")).toBool(false);
     p.autoAcceptBanner = o.value(QStringLiteral("autoAcceptBanner")).toBool(true);
+    p.noDefaultRoute = o.value(QStringLiteral("noDefaultRoute")).toBool(false);
     p.reconnectTimeout = o.value(QStringLiteral("reconnectTimeout")).toInt(300);
     p.dtlsReconnectTimeout = o.value(QStringLiteral("dtlsReconnectTimeout")).toInt(60);
     p.reportedOs = o.value(QStringLiteral("reportedOs")).toString(QStringLiteral("win"));

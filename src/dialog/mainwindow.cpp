@@ -669,6 +669,7 @@ void MainWindow::on_connectClicked()
         p.protocol = QStringLiteral("anyconnect");
     p.camouflageSecret = ss.get_camouflage_secret();
     p.disableUdp = ss.get_disable_udp();
+    p.noDefaultRoute = ss.get_no_default_route();
     p.autoAcceptBanner = ss.get_auto_accept_banner();
     p.reconnectTimeout = ss.get_reconnect_timeout();
     p.dtlsReconnectTimeout = ss.get_dtls_reconnect_timeout();

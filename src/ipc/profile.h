@@ -33,6 +33,7 @@ struct Profile {
     QString camouflageSecret;            // empty ⇒ camouflage off
     bool    disableUdp = false;
     bool    autoAcceptBanner = true;
+    bool    noDefaultRoute = false;      // split-tunnel: don't install a default route
 
     int     reconnectTimeout = 300;
     int     dtlsReconnectTimeout = 60;

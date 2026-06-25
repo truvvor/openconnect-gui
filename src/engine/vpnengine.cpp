@@ -260,6 +260,14 @@ void setup_tun_vfn(void* priv)
     QString scriptPath = dir + "/vpnc-script.js";
     if (!QFile::exists(scriptPath))
         scriptPath = dir + "/vpnc-script-win.js";
+    /* Split-tunnel: tell vpnc-script.js to suppress the default route. The
+     * script (spawned by openconnect) inherits this process environment. */
+    if (e->profile.noDefaultRoute) {
+        qputenv("OCGUI_NO_DEFAULT_ROUTE", "1");
+        e->host->onLog(PRG_INFO, QStringLiteral("Split-tunnel enabled: no default route will be installed (only the VPN subnet / server routes)"));
+    } else {
+        qunsetenv("OCGUI_NO_DEFAULT_ROUTE");
+    }
     const QByteArray script = scriptPath.toLatin1();
     int ret = openconnect_setup_tun_device(e->vpninfo, script.constData(), nullptr);
     if (ret == 0)

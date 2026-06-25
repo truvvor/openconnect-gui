@@ -146,6 +146,7 @@ EditDialog::EditDialog(QString server, QWidget* parent)
     ui->minimizeBox->setChecked(ss->get_minimize());
     ui->useProxyBox->setChecked(ss->get_proxy());
     ui->disableUdpBox->setChecked(ss->get_disable_udp());
+    ui->noDefaultRouteBox->setChecked(ss->get_no_default_route());
     ui->reconnectTimeoutSpinBox->setValue(ss->get_reconnect_timeout());
     ui->dtlsAttemptPeriodSpinBox->setValue(ss->get_dtls_reconnect_timeout());
 
@@ -259,6 +260,7 @@ void EditDialog::on_buttonBox_accepted()
         disable_udp = true;
     }
     ss->set_disable_udp(disable_udp);
+    ss->set_no_default_route(ui->noDefaultRouteBox->isChecked());
     ss->set_auto_accept_banner(ui->autoAcceptBannerBox->isChecked());
     ss->set_force_password_prompt(ui->forcePasswordPromptBox->isChecked());
     ss->set_reconnect_timeout(ui->reconnectTimeoutSpinBox->value());

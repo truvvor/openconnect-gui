@@ -31,6 +31,7 @@ StoredServer::StoredServer()
     , m_minimize_on_connect{ false }
     , m_proxy{ false }
     , m_disable_udp{ false }
+    , m_no_default_route{ false }
     , m_auto_accept_banner{ true }
     , m_force_password_prompt{ false }
     , m_reconnect_timeout{ 300 }
@@ -163,6 +164,7 @@ int StoredServer::load(QString& name)
     this->m_batch_mode = settings.value("batch", false).toBool();
     this->m_proxy = settings.value("proxy", false).toBool();
     this->m_disable_udp = settings.value("disable-udp", false).toBool();
+    this->m_no_default_route = settings.value("no-default-route", false).toBool();
     /* default ON: most users don't want to click through "Welcome to KN-..."
      * banners every connect. They can turn it off in the profile editor. */
     this->m_auto_accept_banner = settings.value("auto-accept-banner", true).toBool();
@@ -261,6 +263,7 @@ int StoredServer::save()
     settings.setValue("batch", this->m_batch_mode);
     settings.setValue("proxy", this->m_proxy);
     settings.setValue("disable-udp", this->m_disable_udp);
+    settings.setValue("no-default-route", this->m_no_default_route);
     settings.setValue("auto-accept-banner", this->m_auto_accept_banner);
     settings.setValue("force-password-prompt", this->m_force_password_prompt);
     settings.setValue("minimize-on-connect", this->m_minimize_on_connect);
@@ -396,6 +399,16 @@ void StoredServer::set_servername(const QString& servername)
 void StoredServer::set_label(const QString& label)
 {
     this->m_label = label;
+}
+
+bool StoredServer::get_no_default_route() const
+{
+    return this->m_no_default_route;
+}
+
+void StoredServer::set_no_default_route(bool v)
+{
+    this->m_no_default_route = v;
 }
 
 void StoredServer::set_disable_udp(bool v)

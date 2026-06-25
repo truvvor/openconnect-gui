@@ -16,7 +16,9 @@ ExternalProject_Add(vpnc-scripts-${vpnc-scripts-TAG}
 
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
-    INSTALL_COMMAND ${CMAKE_COMMAND} -E copy_if_different vpnc-script-win.js ${CMAKE_BINARY_DIR}/external/vpnc-script.js
+    # openconnect-gui ships its own patched vpnc-script.js (split-tunnel support
+    # via OCGUI_NO_DEFAULT_ROUTE); use it instead of the upstream clone.
+    INSTALL_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/nsis/vpnc-script.js ${CMAKE_BINARY_DIR}/external/vpnc-script.js
 )
 
 install(FILES  ${CMAKE_BINARY_DIR}/external/vpnc-script.js
