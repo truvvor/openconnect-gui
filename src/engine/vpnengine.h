@@ -34,6 +34,9 @@ public:
     void requestStats();   // OC_CMD_STATS
     void teardown();       // free vpninfo (runs reason=disconnect script + closes tun).
                            // MUST run on the worker thread, never the service event loop.
+    /* Called from the auth/cert callbacks when the user cancels a prompt, so the
+     * connect/retry loop stops instead of re-prompting 2-3 more times. */
+    void requestUserAbort() { m_cancelRequested = true; }
 
     QString lastError() const { return m_lastErr; }
     SOCKET  cmdFd() const { return m_cmdFd; }

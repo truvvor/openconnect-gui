@@ -98,8 +98,10 @@ int process_auth_form(void* priv, struct oc_auth_form* form)
             for (int i = 0; i < sel->nr_choices; i++)
                 gf.groupChoices.append({ QLatin1String(sel->choices[i]->name),
                                          QLatin1String(sel->choices[i]->label) });
-            if (!H->askAuthForm(gf) || gf.groupValue.isEmpty())
+            if (!H->askAuthForm(gf) || gf.groupValue.isEmpty()) {
+                e->requestUserAbort();
                 return OC_FORM_RESULT_CANCELLED;
+            }
             openconnect_set_option_value(&sel->form, gf.groupValue.toLatin1().data());
             e->profile.groupname = gf.groupValue;
             H->onPersistString(QStringLiteral("groupname"), gf.groupValue);
@@ -168,8 +170,10 @@ int process_auth_form(void* priv, struct oc_auth_form* form)
     }
 
     if (!af.opts.isEmpty()) {
-        if (!H->askAuthForm(af))
+        if (!H->askAuthForm(af)) {
+            e->requestUserAbort();   // user hit Cancel -> stop, do not retry/re-prompt
             return OC_FORM_RESULT_CANCELLED;
+        }
         for (int i = 0; i < af.opts.size(); i++) {
             const QString val = af.opts[i].value;
             struct oc_form_opt* opt = mapped[i];
@@ -227,8 +231,10 @@ int validate_peer_cert(void* priv, const char* reason)
 
     const QString change = mismatch ? QStringLiteral("key-mismatch") : QStringLiteral("unknown");
     if (!H->askCert(QString::fromUtf8(reason ? reason : ""), e->profile.server,
-                    curHash, dstr, change))
+                    curHash, dstr, change)) {
+        e->requestUserAbort();   // user declined the certificate -> stop, no retry
         return -1;
+    }
 
     H->onPersistTrust(curHash, QString::fromLatin1(derBytes.toBase64()));
     return 0;
