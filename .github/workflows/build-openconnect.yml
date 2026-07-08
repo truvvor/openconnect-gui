@@ -63,12 +63,16 @@ jobs:
             ${{ matrix.pacman_prefix }}-nettle
             ${{ matrix.pacman_prefix }}-gmp
             ${{ matrix.pacman_prefix }}-p11-kit
-            ${{ matrix.pacman_prefix }}-stoken
             ${{ matrix.pacman_prefix }}-zlib
             ${{ matrix.pacman_prefix }}-lz4
             ${{ matrix.pacman_prefix }}-libiconv
             ${{ matrix.pacman_prefix }}-gettext
             ${{ matrix.pacman_prefix }}-libidn2
+
+      - name: Install stoken (best-effort — MSYS2 mingw32 dropped the package in 2025)
+        run: |
+          set -eu
+          pacman -S --noconfirm --needed ${{ matrix.pacman_prefix }}-stoken 2>&1 | tail -5 || true
 
       - name: Versions
         run: |
