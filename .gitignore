@@ -36,3 +36,8 @@ scripts/local/ipc_*
 scripts/local/swap-gui.*
 scripts/local/*.out
 scripts/local/*.err
+
+# hygiene
+artifacts/
+scripts/local/
+COMMIT_UI.txt

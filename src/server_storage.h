@@ -68,6 +68,13 @@ public:
     bool get_force_password_prompt() const;
     void set_force_password_prompt(bool v);
 
+    /* When true, peer-certificate-changed / unknown-peer prompts are silently
+     * accepted (new key is trusted-on-first-use, changed key is auto-rotated).
+     * Reason: with LE-cafile-based trust the TOFU pubkey pin is redundant and
+     * generates noise on every LE cert rotation. */
+    bool get_suppress_cert_change() const;
+    void set_suppress_cert_change(bool v);
+
     QString get_cert_file();
     QString get_key_file();
     QString get_key_url() const;
@@ -133,6 +140,7 @@ private:
     bool m_no_default_route;
     bool m_auto_accept_banner;
     bool m_force_password_prompt;
+    bool m_suppress_cert_change;
     int m_reconnect_timeout;
     int m_dtls_attempt_period;
     QString m_username;

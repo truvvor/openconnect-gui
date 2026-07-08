@@ -157,6 +157,7 @@ EditDialog::EditDialog(QString server, QWidget* parent)
     ui->camouflageForceTcpBox->setChecked(!ss->get_camouflage_secret().isEmpty());
     ui->autoAcceptBannerBox->setChecked(ss->get_auto_accept_banner());
     ui->forcePasswordPromptBox->setChecked(ss->get_force_password_prompt());
+    ui->suppressCertChangeBox->setChecked(ss->get_suppress_cert_change());
 
     // Load the windows certificates
     load_win_certs();
@@ -274,6 +275,7 @@ void EditDialog::on_buttonBox_accepted()
     ss->set_no_default_route(ui->noDefaultRouteBox->isChecked());
     ss->set_auto_accept_banner(ui->autoAcceptBannerBox->isChecked());
     ss->set_force_password_prompt(ui->forcePasswordPromptBox->isChecked());
+    ss->set_suppress_cert_change(ui->suppressCertChangeBox->isChecked());
     ss->set_reconnect_timeout(ui->reconnectTimeoutSpinBox->value());
     ss->set_dtls_reconnect_timeout(ui->dtlsAttemptPeriodSpinBox->value());
 

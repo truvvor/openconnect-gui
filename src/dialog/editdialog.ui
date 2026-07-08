@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>EditDialog</class>
  <widget class="QDialog" name="EditDialog">
@@ -717,6 +717,19 @@ When the secret is set: the tunnel URL changes to /api/v1/session, the X-CSTP-/X
             </property>
            </widget>
           </item>
+          <item row="4" column="0" colspan="2">
+           <widget class="QCheckBox" name="suppressCertChangeBox">
+            <property name="text">
+             <string>Suppress peer certificate warnings (auto-trust new/rotated server cert)</string>
+            </property>
+            <property name="toolTip">
+             <string>When the server rotates its TLS certificate (e.g. every 60 days for Let's Encrypt), openconnect-gui normally pops a "peer key has changed" dialog. With this option the new fingerprint is logged and silently accepted. Recommended when a CA file is configured — validity is already checked by libopenconnect via the CA chain. Default: on.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -783,6 +796,7 @@ When the secret is set: the tunnel URL changes to /api/v1/session, the X-CSTP-/X
   <tabstop>camouflageForceTcpBox</tabstop>
   <tabstop>autoAcceptBannerBox</tabstop>
   <tabstop>forcePasswordPromptBox</tabstop>
+  <tabstop>suppressCertChangeBox</tabstop>
  </tabstops>
  <resources>
   <include location="../openconnect-gui.qrc"/>

@@ -1,0 +1,16 @@
+Windows Registry Editor Version 5.00
+
+; openconnect-gui machine-wide defaults for new profiles.
+; See docs/GPO.md for the full key list.
+; Deploy via Group Policy Preferences -> Registry -> Import file, or via
+; login-script `reg import openconnect-gui-defaults.reg`.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\OpenConnect-GUI Team\openconnect-gui\defaults]
+"batch"=dword:00000001
+"no-default-route"=dword:00000001
+"auto-accept-banner"=dword:00000001
+"suppress-cert-change"=dword:00000001
+"force-password-prompt"=dword:00000000
+"disable-udp"=dword:00000000
+"proxy"=dword:00000000
+"minimize-on-connect"=dword:00000000

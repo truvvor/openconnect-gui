@@ -27,13 +27,14 @@ StoredServer::~StoredServer(void)
 }
 
 StoredServer::StoredServer()
-    : m_batch_mode{ false }
+    : m_batch_mode{ true }
     , m_minimize_on_connect{ false }
     , m_proxy{ false }
     , m_disable_udp{ false }
-    , m_no_default_route{ false }
+    , m_no_default_route{ true }
     , m_auto_accept_banner{ true }
     , m_force_password_prompt{ false }
+    , m_suppress_cert_change{ true }
     , m_reconnect_timeout{ 300 }
     , m_dtls_attempt_period{ 25 }
     , m_protocol_id(0)
@@ -160,16 +161,29 @@ int StoredServer::load(QString& name)
         this->m_servername = name;
     }
 
+    /* Machine-wide defaults for booleans (HKLM\Software\OpenConnect-GUI Team\
+     * openconnect-gui\defaults\<key>). Admins push these via GPO; per-profile
+     * values in HKCU still override. Compile-time fallbacks match the tuned
+     * "sane defaults for camouflaged links" set (save-password ON, split-tunnel
+     * ON, banner auto-accept ON, cert-change auto-accept ON). */
+    QSettings sysDefaults(QSettings::SystemScope,
+        QLatin1String("OpenConnect-GUI Team"),
+        QLatin1String("openconnect-gui"));
+    sysDefaults.beginGroup(QLatin1String("defaults"));
+    auto polBool = [&sysDefaults](const QString& k, bool fallback) {
+        return sysDefaults.value(k, fallback).toBool();
+    };
+
     this->m_username = settings.value("username").toString();
-    this->m_batch_mode = settings.value("batch", false).toBool();
-    this->m_proxy = settings.value("proxy", false).toBool();
-    this->m_disable_udp = settings.value("disable-udp", false).toBool();
-    this->m_no_default_route = settings.value("no-default-route", false).toBool();
-    /* default ON: most users don't want to click through "Welcome to KN-..."
-     * banners every connect. They can turn it off in the profile editor. */
-    this->m_auto_accept_banner = settings.value("auto-accept-banner", true).toBool();
-    this->m_force_password_prompt = settings.value("force-password-prompt", false).toBool();
-    this->m_minimize_on_connect = settings.value("minimize-on-connect", false).toBool();
+    this->m_batch_mode = settings.value("batch", polBool("batch", true)).toBool();
+    this->m_proxy = settings.value("proxy", polBool("proxy", false)).toBool();
+    this->m_disable_udp = settings.value("disable-udp", polBool("disable-udp", false)).toBool();
+    this->m_no_default_route = settings.value("no-default-route", polBool("no-default-route", true)).toBool();
+    this->m_auto_accept_banner = settings.value("auto-accept-banner", polBool("auto-accept-banner", true)).toBool();
+    this->m_suppress_cert_change = settings.value("suppress-cert-change", polBool("suppress-cert-change", true)).toBool();
+    this->m_force_password_prompt = settings.value("force-password-prompt", polBool("force-password-prompt", false)).toBool();
+    this->m_minimize_on_connect = settings.value("minimize-on-connect", polBool("minimize-on-connect", false)).toBool();
+    sysDefaults.endGroup();
     this->m_reconnect_timeout = settings.value("reconnect-timeout", 300).toInt();
     this->m_dtls_attempt_period = settings.value("dtls_attempt_period", 25).toInt();
 
@@ -265,6 +279,7 @@ int StoredServer::save()
     settings.setValue("disable-udp", this->m_disable_udp);
     settings.setValue("no-default-route", this->m_no_default_route);
     settings.setValue("auto-accept-banner", this->m_auto_accept_banner);
+    settings.setValue("suppress-cert-change", this->m_suppress_cert_change);
     settings.setValue("force-password-prompt", this->m_force_password_prompt);
     settings.setValue("minimize-on-connect", this->m_minimize_on_connect);
     settings.setValue("reconnect-timeout", this->m_reconnect_timeout);
@@ -542,4 +557,15 @@ unsigned StoredServer::get_server_hash(QByteArray& hash) const
 {
     hash = this->m_server_hash;
     return this->m_server_hash_algo;
+}
+
+
+bool StoredServer::get_suppress_cert_change() const
+{
+    return this->m_suppress_cert_change;
+}
+
+void StoredServer::set_suppress_cert_change(bool v)
+{
+    this->m_suppress_cert_change = v;
 }

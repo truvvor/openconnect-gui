@@ -287,42 +287,57 @@ static int validate_peer_cert(void* privdata, const char* reason)
     if (ret == GNUTLS_E_NO_CERTIFICATE_FOUND) {
         Logger::instance().addMessage(QObject::tr("peer is unknown"));
 
-        QString hostInfoStr = QObject::tr("Host: ") + vpn->ss->get_servername() + QObject::tr("\n") + hash;
-        MyCertMsgBox msgBox(
-            vpn->m,
-            QObject::tr("You are connecting for the first time to this peer.\n"
-                        "You have no guarantee that the server is the computer you think it is.\n\n"
-                        "If the information provided bellow is valid and you trust this host, "
-                        "hit 'Accurate information' to remember it and to carry on connecting.\n"
-                        "If you do not trust this host, hit Cancel to abandon the connection."),
-            hostInfoStr,
-            QObject::tr("Accurate information"),
-            dstr);
-        msgBox.show();
-        if (msgBox.result() == false) {
-            return -1;
+        if (vpn->ss->get_suppress_cert_change()) {
+            /* TOFU auto-accept: gates only the modal; the raw fingerprint is
+             * still logged so the user can audit after the fact. */
+            Logger::instance().addMessage(
+                QObject::tr("Peer fingerprint auto-trusted (suppress-cert-change): ") + QLatin1String(hash));
+            save = true;
+        } else {
+            QString hostInfoStr = QObject::tr("Host: ") + vpn->ss->get_servername() + QObject::tr("\n") + hash;
+            MyCertMsgBox msgBox(
+                vpn->m,
+                QObject::tr("You are connecting for the first time to this peer.\n"
+                            "You have no guarantee that the server is the computer you think it is.\n\n"
+                            "If the information provided bellow is valid and you trust this host, "
+                            "hit 'Accurate information' to remember it and to carry on connecting.\n"
+                            "If you do not trust this host, hit Cancel to abandon the connection."),
+                hostInfoStr,
+                QObject::tr("Accurate information"),
+                dstr);
+            msgBox.show();
+            if (msgBox.result() == false) {
+                return -1;
+            }
+            save = true;
         }
-
-        save = true;
     } else if (ret == GNUTLS_E_CERTIFICATE_KEY_MISMATCH) {
-        Logger::instance().addMessage(QObject::tr("peer's key has changed!"));
+        Logger::instance().addMessage(QObject::tr("peer's key has changed"));
 
-        QString str = QObject::tr("Host: ") + vpn->ss->get_servername() + QObject::tr("\n") + hash;
-
-        MyCertMsgBox msgBox(vpn->m,
-            QObject::tr("This peer is known and associated with a different key."
-                        "It may be that the server has multiple keys "
-                        "or you are (or were in the past) under attack. "
-                        "Do you want to proceed?"),
-            str,
-            QObject::tr("The key was changed by the administrator"),
-            dstr);
-        msgBox.show();
-        if (msgBox.result() == false) {
-            return -1;
+        if (vpn->ss->get_suppress_cert_change()) {
+            /* LE cafile-based trust already handled real validity in libopenconnect
+             * (openconnect_set_system_trust(0) + cafile). The TOFU pubkey pin
+             * is redundant here and just noisy on 60-day LE rotation. Rotate
+             * silently, log the new fingerprint. */
+            Logger::instance().addMessage(
+                QObject::tr("Peer fingerprint rotated silently (suppress-cert-change): ") + QLatin1String(hash));
+            save = true;
+        } else {
+            QString str = QObject::tr("Host: ") + vpn->ss->get_servername() + QObject::tr("\n") + hash;
+            MyCertMsgBox msgBox(vpn->m,
+                QObject::tr("This peer is known and associated with a different key."
+                            "It may be that the server has multiple keys "
+                            "or you are (or were in the past) under attack. "
+                            "Do you want to proceed?"),
+                str,
+                QObject::tr("The key was changed by the administrator"),
+                dstr);
+            msgBox.show();
+            if (msgBox.result() == false) {
+                return -1;
+            }
+            save = true;
         }
-
-        save = true;
     } else if (ret < 0) {
         QString str = QObject::tr("Could not verify certificate: ");
         str += gnutls_strerror(ret);
@@ -442,6 +457,18 @@ VpnInfo::VpnInfo(QString name, StoredServer* ss, MainWindow* m)
      * camouflage block in EditDialog. */
     if (ss->get_disable_udp()) {
         openconnect_disable_dtls(vpninfo);
+    }
+
+    /* Split-tunnel: publish OC_NO_DEFAULT_ROUTE=1 to the child openconnect
+     * process's environment before it spawns vpnc-script-win.js. Our patched
+     * vpnc-script-win.js honours this flag and skips the "route add 0.0.0.0"
+     * / "netsh interface ip set address ... gateway" step, so only the peer's
+     * explicit CISCO_SPLIT_INC subnets end up in the routing table. */
+    if (ss->get_no_default_route()) {
+        qputenv("OC_NO_DEFAULT_ROUTE", "1");
+        Logger::instance().addMessage(QObject::tr("Split-tunnel: OC_NO_DEFAULT_ROUTE=1"));
+    } else {
+        qunsetenv("OC_NO_DEFAULT_ROUTE");
     }
 
     openconnect_set_setup_tun_handler(vpninfo, setup_tun_vfn);

@@ -111,11 +111,20 @@ jobs:
           cp "$RUNNER_TEMP/wintun-pkg/wintun/include/wintun.h" ./wintun.h
           ls -la wintun.h
 
-      - name: Download vpnc-script-win.js
+      - name: Download vpnc-script-win.js + apply GUI split-tunnel patch
         run: |
           set -eux
           cd "$RUNNER_TEMP/oc"
           wget -q "${VPNC_SCRIPT_WIN_URL}" -O vpnc-script-win.js
+          REPO="${{ github.workspace }}"
+          # apply all patches/vpnc-scripts/*.patch in name order
+          for p in "$REPO/patches/vpnc-scripts/"*.patch; do
+            [ -f "$p" ] || continue
+            echo "=== apply $(basename "$p") ==="
+            patch -p1 < "$p"
+          done
+          # sanity check — one of the guarantees we ship on
+          grep -q OC_NO_DEFAULT_ROUTE vpnc-script-win.js
           ls -la vpnc-script-win.js
 
       - name: Configure
