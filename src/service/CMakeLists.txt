@@ -46,7 +46,7 @@ target_link_libraries(${SERVICE_TARGET}
     openconnect::hogweed
     openconnect::nettle
     openconnect::p11-kit
-    openconnect::stoken
+    $<$<BOOL:${HAVE_STOKEN}>:openconnect::stoken>
     openconnect::xml2
 )
 

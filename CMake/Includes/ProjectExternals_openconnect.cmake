@@ -119,17 +119,18 @@ foreach(_lib gmp gnutls hogweed nettle p11-kit xml2)
     set_property(TARGET openconnect::${_lib} PROPERTY IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/external/lib/libopenconnect-5.dll)
 endforeach()
 
-# stoken is optional (see comment above). Declare the target only when the
-# import-lib landed in the devel zip we downloaded, and expose HAVE_STOKEN so
-# src/CMakeLists.txt can gate the link line.
-set(_stoken_implib ${CMAKE_BINARY_DIR}/external/lib/libstoken.dll.a)
-if(EXISTS ${_stoken_implib})
+# stoken is optional. Decide at *configure* time based on the target ABI:
+# MSYS2 stopped shipping mingw-w64-i686-stoken in 2025, so we only assume it
+# on 64-bit builds. build-openconnect.yml also skips packaging its .dll.a
+# into the MINGW32 devel zip on that side, so keeping this consistent avoids
+# a fake HAVE_STOKEN=1 that would blow up at link time.
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     add_library(openconnect::stoken SHARED IMPORTED)
-    set_property(TARGET openconnect::stoken PROPERTY IMPORTED_IMPLIB ${_stoken_implib})
+    set_property(TARGET openconnect::stoken PROPERTY IMPORTED_IMPLIB ${CMAKE_BINARY_DIR}/external/lib/libstoken.dll.a)
     set_property(TARGET openconnect::stoken PROPERTY IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/external/lib/libopenconnect-5.dll)
-    set(HAVE_STOKEN 1 CACHE INTERNAL "stoken import lib present")
+    set(HAVE_STOKEN 1 CACHE INTERNAL "stoken linked (x64)")
 else()
-    set(HAVE_STOKEN 0 CACHE INTERNAL "stoken import lib missing (mingw32 dropped it)")
+    set(HAVE_STOKEN 0 CACHE INTERNAL "stoken not linked (x86 — MSYS2 dropped the package)")
 endif()
 
 # Console install: openconnect.exe + vpnc-script
