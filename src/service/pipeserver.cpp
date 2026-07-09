@@ -11,6 +11,11 @@
 #include <QLocalSocket>
 
 #ifdef _WIN32
+// Vista+ WinAPI (GetNamedPipeClientProcessId, etc.). MinGW headers default to
+// XP-era _WIN32_WINNT, so we bump it explicitly here.
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
 #include <windows.h>
 #endif
 
