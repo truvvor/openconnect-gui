@@ -106,7 +106,10 @@ set_property(TARGET openconnect::openconnect PROPERTY IMPORTED_IMPLIB ${CMAKE_BI
 
 # Legacy IMPORTED targets used by src/CMakeLists.txt are kept as harmless stubs.
 # We resolve real DLLs at install time via the glob below.
-foreach(_lib gmp gnutls hogweed nettle p11-kit stoken xml2)
+# stoken removed from the loop below: MSYS2 dropped mingw-w64-i686-stoken
+# in 2025 so we can't rely on the .dll.a being present. src/CMakeLists.txt
+# links it conditionally via ${HAVE_STOKEN}.
+foreach(_lib gmp gnutls hogweed nettle p11-kit xml2)
     add_library(openconnect::${_lib} SHARED IMPORTED)
     # Best-effort: try to locate import lib by exact name
     set(_implib ${CMAKE_BINARY_DIR}/external/lib/lib${_lib}.dll.a)
@@ -115,6 +118,19 @@ foreach(_lib gmp gnutls hogweed nettle p11-kit stoken xml2)
     # a placeholder — actual DLL gets installed by the glob below
     set_property(TARGET openconnect::${_lib} PROPERTY IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/external/lib/libopenconnect-5.dll)
 endforeach()
+
+# stoken is optional (see comment above). Declare the target only when the
+# import-lib landed in the devel zip we downloaded, and expose HAVE_STOKEN so
+# src/CMakeLists.txt can gate the link line.
+set(_stoken_implib ${CMAKE_BINARY_DIR}/external/lib/libstoken.dll.a)
+if(EXISTS ${_stoken_implib})
+    add_library(openconnect::stoken SHARED IMPORTED)
+    set_property(TARGET openconnect::stoken PROPERTY IMPORTED_IMPLIB ${_stoken_implib})
+    set_property(TARGET openconnect::stoken PROPERTY IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/external/lib/libopenconnect-5.dll)
+    set(HAVE_STOKEN 1 CACHE INTERNAL "stoken import lib present")
+else()
+    set(HAVE_STOKEN 0 CACHE INTERNAL "stoken import lib missing (mingw32 dropped it)")
+endif()
 
 # Console install: openconnect.exe + vpnc-script
 install(
