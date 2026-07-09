@@ -116,7 +116,7 @@ if(MINGW)
         openconnect::nettle
         openconnect::openconnect
         openconnect::p11-kit
-        openconnect::stoken
+        $<$<BOOL:${HAVE_STOKEN}>:openconnect::stoken>
         openconnect::xml2
     )
 endif()
